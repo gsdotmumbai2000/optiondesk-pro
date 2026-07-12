@@ -51,6 +51,17 @@ status = service.market_status()
 - `SubscriptionAddedEvent` / `SubscriptionRemovedEvent`
 - `BrokerConnectedEvent` / `BrokerDisconnectedEvent` (broker layer)
 
-## Default Subscriptions
+## Connection State Machine
 
-NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY (NSE cash indices).
+Market data uses `MarketDataConnectionStateMachine` with states:
+
+- **Disconnected** — no broker subscriptions
+- **Connecting** — activating feed after `BrokerConnected`
+- **Connected** — live subscriptions and tick processing enabled
+- **Reconnecting** — pausing feed on disconnect
+- **Failed** — authentication or activation failure
+
+Watchlist symbols are loaded as **pending** subscriptions at startup.
+Broker `subscribe_quotes()` is called only when state is **Connected**.
+On disconnect, active subscriptions are removed but pending watchlist and
+cached (stale) prices are retained.

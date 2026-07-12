@@ -60,7 +60,7 @@ class MarketWorkspaceService:
         *,
         product_type: str = "CASH",
     ) -> WorkspaceOperationResult:
-        """Subscribe to live quotes for a symbol."""
+        """Queue symbol for subscription (activates when broker connects)."""
         if self._market_data is None:
             return WorkspaceOperationResult(False, WorkspaceType.MARKET, "No market data")
         self._market_data.subscribe(
@@ -68,8 +68,10 @@ class MarketWorkspaceService:
             exchange,
             product_type=ProductType(product_type),
         )
+        pending = self._market_data.connection_status().value != "Connected"
+        message = f"Queued {symbol}" if pending else f"Subscribed to {symbol}"
         return WorkspaceOperationResult(
-            True, WorkspaceType.MARKET, f"Subscribed to {symbol}", {"symbol": symbol}
+            True, WorkspaceType.MARKET, message, {"symbol": symbol}
         )
 
     def latest_quote(
@@ -108,16 +110,15 @@ class MarketWorkspaceService:
         )
 
     def watchlist(self, session_id: str, symbols: tuple[str, ...]) -> WorkspaceOperationResult:
-        """Set watchlist symbols and subscribe live feed."""
+        """Set watchlist symbols in memory (subscriptions remain pending)."""
         self._watchlists[session_id] = symbols
         self._cache.put_data(f"{session_id}:watchlist", symbols)
         if self._market_data is not None:
-            for symbol in symbols:
-                self._market_data.subscribe(symbol, "NSE")
+            self._market_data.load_watchlist(symbols)
         return WorkspaceOperationResult(
             True,
             WorkspaceType.MARKET,
-            f"Watchlist updated ({len(symbols)} symbols)",
+            f"Watchlist loaded ({len(symbols)} symbols, subscriptions pending)",
             symbols,
         )
 

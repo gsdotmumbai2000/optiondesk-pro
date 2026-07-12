@@ -28,7 +28,9 @@ class MarketViewModel(BaseViewModel):
         self._ctx.events.tick_received.connect(self._on_tick)
         self._ctx.events.market_opened.connect(self._on_market_status)
         self._ctx.events.market_closed.connect(self._on_market_status)
-        self._bootstrap_watchlist()
+        self._ctx.events.broker_connected.connect(lambda _: self._load_status())
+        self._ctx.events.broker_disconnected.connect(lambda _: self._load_status())
+        self._load_watchlist_only()
 
     @Property(list, notify=watchlist_changed)
     def watchlist(self) -> list[str]:
@@ -82,8 +84,14 @@ class MarketViewModel(BaseViewModel):
         )
         return result.data if result and result.data else {}
 
-    def _bootstrap_watchlist(self) -> None:
-        self.set_watchlist(self._watchlist)
+    def _load_watchlist_only(self) -> None:
+        """Load watchlist into memory without broker subscriptions."""
+        result = self._ctx.provider.market.watchlist(
+            self._ctx.session_id, tuple(self._watchlist)
+        )
+        self.watchlist_changed.emit(self._watchlist)
+        if result:
+            self.status_message = result.message
         self._load_status()
 
     def _load_status(self) -> None:

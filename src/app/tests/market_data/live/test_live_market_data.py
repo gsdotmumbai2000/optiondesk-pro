@@ -31,7 +31,13 @@ def test_market_data_service_latest_price() -> None:
     pass
 
 
-@pytest.mark.skip("Skeleton — implement subscription manager tests")
-def test_subscription_manager_tracks_active() -> None:
-    """Subscription manager should track active subscriptions."""
+@pytest.mark.skip("Skeleton — implement connection state gating")
+def test_subscriptions_pending_until_connected() -> None:
+    """Subscriptions must remain pending until BrokerConnected."""
+    pass
+
+
+@pytest.mark.skip("Skeleton — implement disconnect retains watchlist")
+def test_disconnect_keeps_pending_watchlist() -> None:
+    """BrokerDisconnected should deactivate broker subs but keep pending."""
     pass

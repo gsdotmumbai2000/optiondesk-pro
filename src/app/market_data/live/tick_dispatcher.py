@@ -1,8 +1,7 @@
 """Dispatch normalized ticks to cache and event bus."""
 
 import hashlib
-from datetime import datetime, timezone
-from decimal import Decimal
+from collections.abc import Callable
 
 from app.events.event_bus import EventBus
 from app.logging.logging_manager import get_logger
@@ -16,10 +15,17 @@ logger = get_logger(__name__)
 class TickDispatcher:
     """Route ticks with duplicate protection."""
 
-    def __init__(self, cache: TickCache, event_bus: EventBus | None = None) -> None:
+    def __init__(
+        self,
+        cache: TickCache,
+        event_bus: EventBus | None = None,
+        *,
+        can_dispatch: Callable[[], bool] | None = None,
+    ) -> None:
         """Initialize dispatcher."""
         self._cache = cache
         self._event_bus = event_bus
+        self._can_dispatch = can_dispatch or (lambda: True)
         self._fingerprints: dict[str, str] = {}
         self._tick_count = 0
 
@@ -29,7 +35,9 @@ class TickDispatcher:
         return self._tick_count
 
     def dispatch(self, tick: TickSnapshot) -> bool:
-        """Store tick and publish event if not duplicate."""
+        """Store tick and publish event if connected and not duplicate."""
+        if not self._can_dispatch():
+            return False
         fingerprint = self._fingerprint(tick)
         key = f"{tick.exchange}:{tick.symbol}:{tick.expiry_date}:{tick.strike_price}"
         if self._fingerprints.get(key) == fingerprint:

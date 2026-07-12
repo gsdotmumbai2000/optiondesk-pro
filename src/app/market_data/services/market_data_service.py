@@ -3,7 +3,7 @@
 from decimal import Decimal
 
 from app.brokers.shared.enums import ProductType
-from app.market_data.live.enums import LiveConnectionStatus
+from app.market_data.live.connection_state import MarketDataConnectionState
 from app.market_data.live.live_provider import LiveMarketDataProvider
 from app.market_data.live.market_status_detector import MarketStatusSnapshot
 from app.market_data.models.tick import TickSnapshot
@@ -21,6 +21,19 @@ class MarketDataService:
         """Return underlying live provider."""
         return self._provider
 
+    def load_watchlist(
+        self,
+        symbols: tuple[str, ...],
+        exchange: str = "NSE",
+        *,
+        product_type: ProductType = ProductType.CASH,
+    ) -> None:
+        """Load watchlist symbols as pending subscriptions."""
+        for symbol in symbols:
+            self._provider.subscriptions.register(
+                symbol, exchange, product_type=product_type
+            )
+
     def subscribe(
         self,
         symbol: str,
@@ -31,8 +44,8 @@ class MarketDataService:
         strike_price: str = "",
         option_right: str = "",
     ) -> None:
-        """Subscribe to live market data."""
-        self._provider.subscriptions.subscribe(
+        """Register symbol; broker subscribe only when connected."""
+        self._provider.subscriptions.register(
             symbol,
             exchange,
             product_type=product_type,
@@ -50,8 +63,8 @@ class MarketDataService:
         expiry_date: str = "",
         strike_price: str = "",
     ) -> None:
-        """Unsubscribe from live market data."""
-        self._provider.subscriptions.unsubscribe(
+        """Remove symbol from watchlist."""
+        self._provider.subscriptions.remove(
             symbol,
             exchange,
             product_type=product_type,
@@ -65,16 +78,16 @@ class MarketDataService:
         return tick.ltp if tick is not None else None
 
     def latest_tick(self, symbol: str, exchange: str, **parts: str) -> TickSnapshot | None:
-        """Return latest tick snapshot."""
+        """Return latest tick snapshot (may be stale)."""
         return self._provider.tick_cache.get(exchange, symbol, **parts)
 
     def market_status(self) -> MarketStatusSnapshot:
         """Return current market status."""
         return self._provider.market_status.detect()
 
-    def connection_status(self) -> LiveConnectionStatus:
-        """Return websocket connection status."""
-        return self._provider.websocket.status
+    def connection_status(self) -> MarketDataConnectionState:
+        """Return market data connection state."""
+        return self._provider.connection.state
 
     def last_tick_time(self):
         """Return timestamp of last received tick."""
