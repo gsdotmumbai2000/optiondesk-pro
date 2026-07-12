@@ -1,8 +1,17 @@
 """Application configuration models."""
 
+from enum import Enum
+
 from pydantic import BaseModel, Field
 
 from app.config.models.logging_config import LoggingConfig
+
+
+class BreezeEnvironment(str, Enum):
+    """ICICI Breeze API environment."""
+
+    SANDBOX = "sandbox"
+    PRODUCTION = "production"
 
 
 class ApplicationConfig(BaseModel):
@@ -55,6 +64,8 @@ class BrokerConfig(BaseModel):
     schema_version: int = 1
     broker_code: str = "BREEZE"
     account_name: str = "Default"
+    user_id: str = ""
+    environment: BreezeEnvironment = BreezeEnvironment.PRODUCTION
     websocket_enabled: bool = True
     auto_login: bool = True
     reconnect_max_retries: int = 5

@@ -3,8 +3,9 @@
 from pathlib import Path
 from typing import Any
 
-from app.utils.constants import APP_VERSION, BASE_DIR, VERSION_JSON
+from app.utils.constants import APP_VERSION, VERSION_JSON
 from app.utils.file_helper import FileHelper
+from app.utils.runtime_paths import bundle_root
 
 
 class VersionManager:
@@ -12,7 +13,7 @@ class VersionManager:
 
     def __init__(self, version_file: Path | None = None) -> None:
         """Initialize the version manager."""
-        self._version_file = version_file or (BASE_DIR / VERSION_JSON)
+        self._version_file = version_file or (bundle_root() / VERSION_JSON)
         self._metadata: dict[str, Any] = {}
 
     @property

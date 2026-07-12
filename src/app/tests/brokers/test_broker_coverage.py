@@ -54,10 +54,14 @@ def test_session_manager_refresh(
     """Session manager should validate refreshed session."""
     client = MockBreezeClient("key")
     from app.brokers.breeze.authentication import BreezeAuthentication
+    from app.brokers.breeze.authentication_service import BreezeAuthenticationService
+    from app.brokers.breeze.configuration_provider import BreezeConfigurationProvider
 
     auth = BreezeAuthentication(client, credential_manager, "Default")
     auth.authenticate()
-    session = BreezeSessionManager(auth, broker_config)
+    config_provider = BreezeConfigurationProvider(broker_config, credential_manager)
+    auth_service = BreezeAuthenticationService(auth, config_provider)
+    session = BreezeSessionManager(auth, auth_service, broker_config)
     session.mark_authenticated()
     assert session.is_session_valid() is True
     session.refresh_session()

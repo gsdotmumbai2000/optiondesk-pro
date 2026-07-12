@@ -2,15 +2,17 @@
 
 from pathlib import Path
 
+from app.utils.runtime_paths import application_root, bundle_root
+
 APP_NAME: str = "OptionDesk Pro"
 APP_VERSION: str = "0.1.0"
 APP_CODENAME: str = "Foundation"
 APP_VENDOR: str = "OptionDesk"
 
-BASE_DIR: Path = Path(__file__).resolve().parents[3]
+BASE_DIR: Path = application_root()
 SRC_DIR: Path = BASE_DIR / "src"
-CONFIG_DIR: Path = BASE_DIR / "config"
-RESOURCES_DIR: Path = BASE_DIR / "resources"
+CONFIG_DIR: Path = bundle_root() / "config"
+RESOURCES_DIR: Path = bundle_root() / "resources"
 DATA_DIR_NAME: str = "OptionDeskPro"
 
 DEFAULT_THEME: str = "dark"

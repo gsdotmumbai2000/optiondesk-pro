@@ -16,7 +16,10 @@ Requires-Dist: alembic>=1.14.0
 Requires-Dist: APScheduler>=3.10.4
 Requires-Dist: PyYAML>=6.0.2
 Requires-Dist: psutil>=6.1.0
+Requires-Dist: breeze-connect>=1.0.69
 Requires-Dist: pywin32>=308; sys_platform == "win32"
+Provides-Extra: build
+Requires-Dist: pyinstaller>=6.11.0; extra == "build"
 Provides-Extra: dev
 Requires-Dist: pytest>=8.3.0; extra == "dev"
 Requires-Dist: pytest-asyncio>=0.24.0; extra == "dev"
@@ -24,6 +27,10 @@ Requires-Dist: pytest-cov>=6.0.0; extra == "dev"
 Requires-Dist: black>=24.10.0; extra == "dev"
 Requires-Dist: mypy>=1.13.0; extra == "dev"
 Requires-Dist: ruff>=0.8.0; extra == "dev"
+Requires-Dist: isort>=5.13.0; extra == "dev"
+Requires-Dist: types-PyYAML>=6.0.12; extra == "dev"
+Requires-Dist: types-psutil>=7.0.0; extra == "dev"
+Requires-Dist: types-pywin32>=306.0.0; extra == "dev"
 
 # OptionDesk Pro
 
@@ -73,6 +80,17 @@ Or:
 ```bash
 python -m app.main
 ```
+
+## Windows Binary
+
+Build a single-file GUI executable (`dist/OptionDeskPro.exe`):
+
+```powershell
+.\scripts\build_windows.ps1
+```
+
+Requires Python 3.13+ on Windows. User data and logs are written to
+`%LOCALAPPDATA%\OptionDeskPro` when running the packaged binary.
 
 ## Test
 

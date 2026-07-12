@@ -1,5 +1,6 @@
 """Configuration manager."""
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -135,7 +136,7 @@ class ConfigurationManager:
     def _resolve_default_data_dir(self) -> Path:
         """Resolve the default per-user data directory."""
         appdata = Path.home() / "AppData" / "Local" / "OptionDeskPro"
-        if BASE_DIR.name == "optiondesk-pro":
+        if getattr(sys, "frozen", False) or BASE_DIR.name == "optiondesk-pro":
             return appdata
         return BASE_DIR / "data"
 

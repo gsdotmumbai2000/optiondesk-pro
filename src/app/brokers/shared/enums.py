@@ -23,7 +23,20 @@ class ConnectionState(str, Enum):
     AUTHENTICATING = "AUTHENTICATING"
     RECONNECTING = "RECONNECTING"
     SESSION_EXPIRED = "SESSION_EXPIRED"
+    AUTHENTICATION_FAILED = "AUTHENTICATION_FAILED"
+    RECONNECT_REQUIRED = "RECONNECT_REQUIRED"
     ERROR = "ERROR"
+
+
+class BrokerConnectionStatus(str, Enum):
+    """User-facing broker connection status labels."""
+
+    DISCONNECTED = "Disconnected"
+    CONNECTING = "Connecting"
+    CONNECTED = "Connected"
+    AUTHENTICATION_FAILED = "Authentication Failed"
+    EXPIRED = "Expired"
+    RECONNECT_REQUIRED = "Reconnect Required"
 
 
 class OrderSide(str, Enum):

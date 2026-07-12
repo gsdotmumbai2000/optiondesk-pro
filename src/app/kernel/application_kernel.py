@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
+from app.brokers.bootstrap import BrokerProvider
 from app.config.configuration_manager import ConfigurationManager
 from app.core.service_registry import ServiceRegistry
 from app.events.application_events import (ApplicationShuttingDownEvent,
@@ -23,8 +24,11 @@ from app.plugins.plugin_manager import PluginManager
 from app.repositories.repository_factory import RepositoryFactory
 from app.scheduler.scheduler_manager import SchedulerManager
 from app.security.credential_manager import CredentialManager
+from app.services.broker.bootstrap import (build_broker_bundle,
+                                           build_connection_status_service)
+from app.services.broker.connection_status_service import ConnectionStatusService
 from app.services.service_keys import ServiceKeys
-from app.ui.application import create_application
+from app.ui.application.desktop_app import DesktopApplication
 from app.utils.constants import LOG_DIR_NAME
 from app.utils.file_helper import FileHelper
 from app.utils.thread_helper import ThreadHelper
@@ -39,7 +43,7 @@ class ApplicationKernel:
         """Initialize the application kernel."""
         self._container = Container()
         self._config_dir = config_dir
-        self._qt_application: QApplication | None = None
+        self._desktop_application: DesktopApplication | None = None
         self._thread_helper = ThreadHelper()
         self._running = False
         self._initialized = False
@@ -59,6 +63,8 @@ class ApplicationKernel:
         self.version_manager: VersionManager | None = None
         self.credential_manager: CredentialManager | None = None
         self.market_master_provider: MarketMasterProvider | None = None
+        self.broker_provider: BrokerProvider | None = None
+        self._connection_status: ConnectionStatusService | None = None
 
     def initialize(self) -> None:
         """Initialize all application subsystems."""
@@ -88,7 +94,11 @@ class ApplicationKernel:
         self.service_registry.start_all()
         self.workspace_manager.load_active_profile()
 
-        self._qt_application = create_application()
+        self._desktop_application = DesktopApplication(
+            event_bus=self.event_bus,
+            broker_provider=self.broker_provider,
+            connection_status=self._connection_status,
+        )
         self._running = True
         self.event_bus.publish(
             ApplicationStartedEvent(
@@ -96,13 +106,14 @@ class ApplicationKernel:
             )
         )
         logger.info("Application started")
-        return self._qt_application.exec()
+        return self._desktop_application.run()
 
     def stop(self) -> None:
         """Request application stop."""
+        qt_app = QApplication.instance()
+        if qt_app is not None:
+            qt_app.quit()
         self.shutdown()
-        if self._qt_application is not None:
-            self._qt_application.quit()
 
     def restart(self) -> None:
         """Restart the application."""
@@ -195,6 +206,7 @@ class ApplicationKernel:
         self.error_manager = self._container.error_manager()
         self.update_manager = self._container.update_manager()
         self.market_master_provider = self._container.market_master_provider()
+        self._bootstrap_broker()
         self._register_services()
 
     def _start_subsystems(self) -> None:
@@ -247,3 +259,24 @@ class ApplicationKernel:
             ServiceKeys.TRADING_SESSION,
             lambda: provider.session_service,
         )
+        if self.broker_provider is not None:
+            broker = self.broker_provider
+            self.service_registry.register(ServiceKeys.BROKER, lambda: broker)
+
+    def _bootstrap_broker(self) -> None:
+        """Initialize broker provider and connection status."""
+        assert self.configuration_manager is not None
+        assert self.credential_manager is not None
+        assert self.event_bus is not None
+
+        config = self.configuration_manager.configuration.broker
+        data_dir = Path(
+            self.configuration_manager.configuration.application.data_directory
+        )
+        self.broker_provider = build_broker_bundle(
+            config,
+            self.credential_manager,
+            self.event_bus,
+            data_dir,
+        )
+        self._connection_status = build_connection_status_service(config, self.event_bus)

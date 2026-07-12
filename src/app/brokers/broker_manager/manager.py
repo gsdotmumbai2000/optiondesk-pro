@@ -8,10 +8,11 @@ from typing import Any
 from app.brokers.broker_factory.factory import BrokerFactory
 from app.brokers.broker_interface.interface import BrokerInterface
 from app.brokers.broker_manager.state import BrokerConnectionState
-from app.brokers.events import (BrokerConnectedEvent, BrokerDisconnectedEvent,
-                                SessionExpiredEvent)
+from app.brokers.events import (AuthenticationFailedEvent, BrokerConnectedEvent,
+                                BrokerDisconnectedEvent, SessionExpiredEvent)
 from app.brokers.shared.enums import ConnectionState
-from app.brokers.shared.exceptions import (BrokerConnectionException,
+from app.brokers.shared.exceptions import (BrokerAuthenticationException,
+                                           BrokerConnectionException,
                                            BrokerSessionExpiredException)
 from app.brokers.shared.models import BrokerHealth
 from app.brokers.shared.retry import retry_call
@@ -68,7 +69,12 @@ class BrokerManager:
                     retry_on=(BrokerConnectionException,),
                 )
             except Exception as error:
-                self._state.set_state(ConnectionState.ERROR)
+                self._state.set_state(ConnectionState.AUTHENTICATION_FAILED)
+                self._publish(
+                    AuthenticationFailedEvent(
+                        payload={"broker": self.broker_code, "reason": str(error)}
+                    )
+                )
                 raise BrokerConnectionException(str(error)) from error
 
     def disconnect(self) -> None:
@@ -139,7 +145,19 @@ class BrokerManager:
         """Perform a single connect attempt."""
         self.broker.connect()
         if self._config.auto_login:
-            self.broker.authenticate()
+            try:
+                self.broker.authenticate()
+            except BrokerAuthenticationException as error:
+                self._state.set_state(ConnectionState.AUTHENTICATION_FAILED)
+                self._publish(
+                    AuthenticationFailedEvent(
+                        payload={
+                            "broker": self.broker_code,
+                            "reason": str(error),
+                        }
+                    )
+                )
+                raise
         self._state.set_state(ConnectionState.CONNECTED)
         self._state.set_session_valid(True)
         self._notify_health(True)
@@ -167,6 +185,7 @@ class BrokerManager:
         self._state.set_session_valid(False)
         self._notify_health(False)
         self._publish(SessionExpiredEvent(payload={"broker": self.broker_code}))
+        self._state.set_state(ConnectionState.RECONNECT_REQUIRED)
 
     def _stop_heartbeat(self) -> None:
         """Stop heartbeat thread."""

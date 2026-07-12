@@ -47,6 +47,17 @@ Or:
 python -m app.main
 ```
 
+## Windows Binary
+
+Build a single-file GUI executable (`dist/OptionDeskPro.exe`):
+
+```powershell
+.\scripts\build_windows.ps1
+```
+
+Requires Python 3.13+ on Windows. User data and logs are written to
+`%LOCALAPPDATA%\OptionDeskPro` when running the packaged binary.
+
 ## Test
 
 ```bash

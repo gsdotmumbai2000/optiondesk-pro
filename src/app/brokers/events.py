@@ -21,6 +21,16 @@ class SessionExpiredEvent(ApplicationEvent):
 
 
 @dataclass(frozen=True, slots=True)
+class AuthenticationSucceededEvent(ApplicationEvent):
+    """Published when broker authentication succeeds."""
+
+
+@dataclass(frozen=True, slots=True)
+class AuthenticationFailedEvent(ApplicationEvent):
+    """Published when broker authentication fails."""
+
+
+@dataclass(frozen=True, slots=True)
 class OrderPlacedEvent(ApplicationEvent):
     """Published when an order is placed."""
 

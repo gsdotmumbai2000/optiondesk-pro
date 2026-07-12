@@ -8,9 +8,13 @@ alembic>=1.14.0
 APScheduler>=3.10.4
 PyYAML>=6.0.2
 psutil>=6.1.0
+breeze-connect>=1.0.69
 
 [:sys_platform == "win32"]
 pywin32>=308
+
+[build]
+pyinstaller>=6.11.0
 
 [dev]
 pytest>=8.3.0
@@ -19,3 +23,7 @@ pytest-cov>=6.0.0
 black>=24.10.0
 mypy>=1.13.0
 ruff>=0.8.0
+isort>=5.13.0
+types-PyYAML>=6.0.12
+types-psutil>=7.0.0
+types-pywin32>=306.0.0
