@@ -8,6 +8,7 @@ from app.ui.dialogs.broker_login_dialog import BrokerLoginDialog
 from app.ui.dialogs.broker_settings_dialog import BrokerSettingsDialog
 from app.ui.docking.dock_manager import DockManager
 from app.ui.widgets.connection_indicator import ConnectionIndicator
+from app.ui.widgets.market_status_indicator import MarketStatusIndicator
 from app.ui.main_window.ribbon_bar import build_ribbon
 from app.ui.models.ui_enums import UIWorkspaceId
 from app.ui.navigation.navigation_pane import NavigationPane
@@ -130,9 +131,15 @@ class MainWindow(QMainWindow):
         self._status = QStatusBar()
         self.setStatusBar(self._status)
         self._connection_indicator = ConnectionIndicator(self)
+        self._market_status_indicator = MarketStatusIndicator(self)
+        self._last_tick_time = "—"
         self._status.addPermanentWidget(self._connection_indicator)
+        self._status.addPermanentWidget(self._market_status_indicator)
         self._broker_vm.status_changed.connect(self._on_broker_status)
+        self._market_vm.market_status_changed.connect(self._on_market_status_bar)
+        self._market_vm.tick_updated.connect(self._on_tick_status_bar)
         self._broker_vm.refresh_status()
+        self._market_vm.refresh()
         for vm in (
             self._trading_vm,
             self._market_vm,
@@ -152,6 +159,29 @@ class MainWindow(QMainWindow):
             str(payload.get("user_id", "")),
             str(payload.get("environment", "")),
         )
+        self._update_market_status_bar()
+
+    def _on_market_status_bar(self, payload: dict) -> None:
+        self._update_market_status_bar(payload)
+
+    def _on_tick_status_bar(self, payload: dict) -> None:
+        tick = payload.get("tick", payload)
+        self._last_tick_time = str(tick.get("timestamp", "—"))
+        self._update_market_status_bar()
+
+    def _update_market_status_bar(self, payload: dict | None = None) -> None:
+        market = "—"
+        connected = "—"
+        last_tick = getattr(self, "_last_tick_time", "—")
+        if payload:
+            market = str(payload.get("status", market))
+            connected = str(payload.get("connection", connected))
+            last_tick = str(payload.get("last_tick", last_tick))
+        elif hasattr(self, "_market_vm"):
+            market = self._market_vm.market_status
+            connected = self._market_vm.connection_status
+            last_tick = self._market_vm.last_update
+        self._market_status_indicator.update_status(market, last_tick, connected)
 
     def _show_broker_login(self) -> None:
         dialog = BrokerLoginDialog(self._broker_vm, self)

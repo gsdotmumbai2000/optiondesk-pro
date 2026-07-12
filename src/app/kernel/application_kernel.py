@@ -20,6 +20,7 @@ from app.kernel.version_manager import VersionManager
 from app.kernel.workspace_manager import WorkspaceManager
 from app.logging.logging_manager import LoggingManager, get_logger
 from app.market.bootstrap import MarketMasterProvider
+from app.market_data.bootstrap import MarketDataProvider
 from app.plugins.plugin_manager import PluginManager
 from app.repositories.repository_factory import RepositoryFactory
 from app.scheduler.scheduler_manager import SchedulerManager
@@ -65,6 +66,7 @@ class ApplicationKernel:
         self.market_master_provider: MarketMasterProvider | None = None
         self.broker_provider: BrokerProvider | None = None
         self._connection_status: ConnectionStatusService | None = None
+        self.market_data_provider: MarketDataProvider | None = None
 
     def initialize(self) -> None:
         """Initialize all application subsystems."""
@@ -98,6 +100,7 @@ class ApplicationKernel:
             event_bus=self.event_bus,
             broker_provider=self.broker_provider,
             connection_status=self._connection_status,
+            market_data=self.market_data_provider,
         )
         self._running = True
         self.event_bus.publish(
@@ -140,6 +143,8 @@ class ApplicationKernel:
             self.repository_factory.close()
         if self.market_master_provider is not None:
             self.market_master_provider.shutdown()
+        if self.market_data_provider is not None:
+            self.market_data_provider.stop()
         if self.health_monitor is not None:
             self.health_monitor.stop()
         if self.event_bus is not None:
@@ -207,6 +212,7 @@ class ApplicationKernel:
         self.update_manager = self._container.update_manager()
         self.market_master_provider = self._container.market_master_provider()
         self._bootstrap_broker()
+        self._bootstrap_market_data()
         self._register_services()
 
     def _start_subsystems(self) -> None:
@@ -262,6 +268,24 @@ class ApplicationKernel:
         if self.broker_provider is not None:
             broker = self.broker_provider
             self.service_registry.register(ServiceKeys.BROKER, lambda: broker)
+        if self.market_data_provider is not None:
+            market_data = self.market_data_provider
+            self.service_registry.register(ServiceKeys.MARKET_DATA, lambda: market_data)
+
+    def _bootstrap_market_data(self) -> None:
+        """Initialize live market data provider."""
+        if self.broker_provider is None or self.event_bus is None:
+            return
+        assert self.configuration_manager is not None
+        data_dir = Path(
+            self.configuration_manager.configuration.application.data_directory
+        )
+        self.market_data_provider = MarketDataProvider(
+            self.broker_provider.broker,
+            data_dir,
+            self.event_bus,
+        )
+        self.market_data_provider.start()
 
     def _bootstrap_broker(self) -> None:
         """Initialize broker provider and connection status."""

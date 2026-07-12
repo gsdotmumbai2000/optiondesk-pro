@@ -6,6 +6,7 @@ from app.ui.charts import price_chart, volatility_chart
 from app.ui.option_chain.option_chain_view import OptionChainView
 from app.ui.viewmodels.market_viewmodel import MarketViewModel
 from app.ui.widgets.common import DataTableWidget, SectionHeader
+from app.ui.widgets.live_price_widget import LivePriceWidget
 
 
 class MarketView(QWidget):
@@ -15,6 +16,8 @@ class MarketView(QWidget):
         super().__init__(parent)
         self._vm = viewmodel
         layout = QVBoxLayout(self)
+        self._spot = LivePriceWidget("NIFTY Spot")
+        layout.addWidget(self._spot)
         top = QHBoxLayout()
         self._watchlist = DataTableWidget()
         self._indices = DataTableWidget()
@@ -28,6 +31,8 @@ class MarketView(QWidget):
         self._chain = OptionChainView()
         layout.addWidget(self._chain)
         viewmodel.watchlist_changed.connect(self._on_watchlist)
+        viewmodel.tick_updated.connect(self._on_tick)
+        viewmodel.market_status_changed.connect(self._on_market_status)
 
     def _wrap(self, title: str, widget: QWidget) -> QWidget:
         box = QWidget()
@@ -38,3 +43,12 @@ class MarketView(QWidget):
 
     def _on_watchlist(self, symbols: list) -> None:
         self._watchlist.setToolTip(", ".join(symbols))
+        self._indices.setToolTip("NIFTY | BANKNIFTY | FINNIFTY | MIDCPNIFTY")
+
+    def _on_tick(self, payload: dict) -> None:
+        tick = payload.get("tick", payload)
+        self._spot.update_tick(tick)
+
+    def _on_market_status(self, payload: dict) -> None:
+        status = str(payload.get("status", "—"))
+        self._spot.set_market_status(f"Market: {status}")

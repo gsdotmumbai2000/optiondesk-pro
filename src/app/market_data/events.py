@@ -33,3 +33,18 @@ class MarketClosedEvent(ApplicationEvent):
 @dataclass(frozen=True, slots=True)
 class SnapshotUpdatedEvent(ApplicationEvent):
     """Published when a market snapshot is captured."""
+
+
+@dataclass(frozen=True, slots=True)
+class TickReceivedEvent(ApplicationEvent):
+    """Published when a live tick is received."""
+
+
+@dataclass(frozen=True, slots=True)
+class SubscriptionAddedEvent(ApplicationEvent):
+    """Published when a live subscription is added."""
+
+
+@dataclass(frozen=True, slots=True)
+class SubscriptionRemovedEvent(ApplicationEvent):
+    """Published when a live subscription is removed."""

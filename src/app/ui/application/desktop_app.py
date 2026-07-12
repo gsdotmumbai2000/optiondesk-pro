@@ -3,6 +3,7 @@
 from app.application.bootstrap import ApplicationProvider
 from app.brokers.bootstrap import BrokerProvider
 from app.events.event_bus import EventBus
+from app.market_data.bootstrap import MarketDataProvider
 from app.services.broker.connection_status_service import ConnectionStatusService
 from app.ui.application.qt_application import create_application
 from app.ui.application.worker_pool import BackgroundWorker
@@ -21,6 +22,7 @@ class DesktopApplication:
         event_bus: EventBus | None = None,
         broker_provider: BrokerProvider | None = None,
         connection_status: ConnectionStatusService | None = None,
+        market_data: MarketDataProvider | None = None,
     ) -> None:
         """Initialize desktop application."""
         self._event_bus = event_bus
@@ -28,6 +30,7 @@ class DesktopApplication:
             event_bus=event_bus,
             broker_provider=broker_provider,
             connection_status=connection_status,
+            market_data=market_data,
         )
         self._theme = ThemeManager()
         self._worker = BackgroundWorker()

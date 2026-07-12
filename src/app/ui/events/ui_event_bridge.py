@@ -13,6 +13,8 @@ from app.brokers.events import (AuthenticationFailedEvent,
                                 BrokerConnectedEvent, BrokerDisconnectedEvent,
                                 SessionExpiredEvent)
 from app.events.event_bus import EventBus
+from app.market_data.events import (MarketClosedEvent, MarketOpenedEvent,
+                                    QuoteUpdatedEvent, TickReceivedEvent)
 from app.monitor.events import AlertRaisedEvent
 
 
@@ -30,6 +32,9 @@ class UIEventBridge(QObject):
     session_expired = Signal(dict)
     authentication_succeeded = Signal(dict)
     authentication_failed = Signal(dict)
+    tick_received = Signal(dict)
+    market_opened = Signal(dict)
+    market_closed = Signal(dict)
 
     def __init__(self, event_bus: EventBus | None, parent: QObject | None = None) -> None:
         """Initialize bridge."""
@@ -51,6 +56,10 @@ class UIEventBridge(QObject):
         self._bus.subscribe(SessionExpiredEvent, self._on_session_expired)
         self._bus.subscribe(AuthenticationSucceededEvent, self._on_auth_success)
         self._bus.subscribe(AuthenticationFailedEvent, self._on_auth_failed)
+        self._bus.subscribe(TickReceivedEvent, self._on_tick)
+        self._bus.subscribe(MarketOpenedEvent, self._on_market_opened)
+        self._bus.subscribe(MarketClosedEvent, self._on_market_closed)
+        self._bus.subscribe(QuoteUpdatedEvent, self._on_quote_updated)
 
     def _on_portfolio(self, event: PortfolioLoadedEvent) -> None:
         self.portfolio_updated.emit(event.payload)
@@ -81,6 +90,21 @@ class UIEventBridge(QObject):
 
     def _on_auth_failed(self, event: AuthenticationFailedEvent) -> None:
         self.authentication_failed.emit(event.payload)
+
+    def _on_tick(self, event: TickReceivedEvent) -> None:
+        self.tick_received.emit(event.payload)
+        self.market_updated.emit(event.payload)
+
+    def _on_market_opened(self, event: MarketOpenedEvent) -> None:
+        self.market_opened.emit(event.payload)
+        self.market_updated.emit(event.payload)
+
+    def _on_market_closed(self, event: MarketClosedEvent) -> None:
+        self.market_closed.emit(event.payload)
+        self.market_updated.emit(event.payload)
+
+    def _on_quote_updated(self, event: QuoteUpdatedEvent) -> None:
+        self.market_updated.emit(event.payload)
 
     def emit_market_update(self, payload: dict) -> None:
         """Emit market update for UI refresh."""
