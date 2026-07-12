@@ -1,0 +1,7 @@
+schema_version: 1
+max_daily_loss: null
+max_position_delta: null
+max_portfolio_margin: null
+pop_warning_threshold: "0.45"
+delta_roll_threshold: "20"
+require_order_confirmation: true

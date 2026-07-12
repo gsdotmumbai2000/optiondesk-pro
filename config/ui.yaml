@@ -1,0 +1,7 @@
+schema_version: 1
+theme: dark
+font_family: Segoe UI
+font_size: 10
+chart_refresh_ms: 100
+confirm_on_exit: true
+restore_last_workspace: true

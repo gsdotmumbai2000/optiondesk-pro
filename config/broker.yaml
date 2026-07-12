@@ -1,0 +1,9 @@
+schema_version: 1
+broker_code: BREEZE
+account_name: Default
+websocket_enabled: true
+auto_login: true
+reconnect_max_retries: 5
+reconnect_backoff_ms: 2000
+session_timeout_min: 480
+rate_limit_per_second: 10

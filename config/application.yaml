@@ -1,0 +1,8 @@
+schema_version: 1
+name: OptionDesk Pro
+environment: development
+locale: en_IN
+timezone: Asia/Kolkata
+data_directory: ""
+auto_save_interval_sec: 300
+check_updates_on_startup: true

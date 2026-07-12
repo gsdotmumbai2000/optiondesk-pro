@@ -1,0 +1,27 @@
+schema_version: 1
+data_directory: ""
+config:
+  backend: sqlite
+  path: config.db
+  wal_mode: true
+  echo: false
+market:
+  backend: sqlite
+  path: market.db
+  wal_mode: true
+  echo: false
+strategy:
+  backend: sqlite
+  path: strategy.db
+  wal_mode: true
+  echo: false
+backtest:
+  backend: sqlite
+  path: backtest.db
+  wal_mode: true
+  echo: false
+log:
+  backend: sqlite
+  path: log.db
+  wal_mode: true
+  echo: false

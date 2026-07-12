@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "optiondesk-pro"
+version = "0.1.0"
+description = "Professional Windows desktop options trading platform for Indian traders"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "Proprietary" }
+authors = [{ name = "OptionDesk Pro Team" }]
+dependencies = [
+    "PySide6>=6.8.0",
+    "SQLAlchemy>=2.0.36",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "loguru>=0.7.3",
+    "dependency-injector>=4.42.0",
+    "alembic>=1.14.0",
+    "APScheduler>=3.10.4",
+    "PyYAML>=6.0.2",
+    "psutil>=6.1.0",
+    "breeze-connect>=1.0.69",
+    "pywin32>=308; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "black>=24.10.0",
+    "mypy>=1.13.0",
+    "ruff>=0.8.0",
+    "isort>=5.13.0",
+    "types-PyYAML>=6.0.12",
+    "types-psutil>=7.0.0",
+    "types-pywin32>=306.0.0",
+]
+
+[project.scripts]
+optiondesk = "app.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ["py313"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["apscheduler.*", "breeze_connect.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["src/app/tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"

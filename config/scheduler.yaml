@@ -1,0 +1,6 @@
+schema_version: 1
+enabled: true
+timezone: Asia/Kolkata
+auto_refresh_interval_sec: 30
+backup_cron: "0 8 * * *"
+cleanup_cron: "0 0 * * *"
