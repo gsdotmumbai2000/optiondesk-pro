@@ -1,0 +1,128 @@
+/* OptionDesk Pro Dark Theme - Professional Trading Terminal */
+
+QMainWindow {
+    background-color: #0d1117;
+    color: #e6edf3;
+}
+
+QMenuBar {
+    background-color: #161b22;
+    color: #e6edf3;
+    border-bottom: 1px solid #30363d;
+}
+
+QMenuBar::item:selected {
+    background-color: #21262d;
+}
+
+QStatusBar {
+    background-color: #161b22;
+    color: #8b949e;
+    border-top: 1px solid #30363d;
+}
+
+QTabWidget::pane {
+    border: 1px solid #30363d;
+    background: #0d1117;
+}
+
+QTabBar::tab {
+    background: #161b22;
+    color: #8b949e;
+    padding: 8px 16px;
+    border: 1px solid #30363d;
+    border-bottom: none;
+}
+
+QTabBar::tab:selected {
+    background: #1f6feb;
+    color: #ffffff;
+}
+
+QToolBar {
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    spacing: 6px;
+    padding: 4px;
+}
+
+QToolButton {
+    background: transparent;
+    color: #e6edf3;
+    padding: 6px 12px;
+    border-radius: 4px;
+}
+
+QToolButton:hover {
+    background: #21262d;
+}
+
+QTableView {
+    background-color: #0d1117;
+    alternate-background-color: #161b22;
+    gridline-color: #30363d;
+    selection-background-color: #1f6feb;
+    color: #e6edf3;
+}
+
+QHeaderView::section {
+    background-color: #161b22;
+    color: #8b949e;
+    border: 1px solid #30363d;
+    padding: 4px;
+}
+
+QDockWidget {
+    color: #e6edf3;
+    titlebar-close-icon: none;
+    border: 1px solid #30363d;
+}
+
+QDockWidget::title {
+    background: #161b22;
+    padding: 6px;
+}
+
+QListWidget {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    color: #e6edf3;
+}
+
+QPushButton {
+    background-color: #21262d;
+    color: #e6edf3;
+    border: 1px solid #30363d;
+    padding: 6px 14px;
+    border-radius: 4px;
+}
+
+QPushButton:hover {
+    background-color: #30363d;
+    border-color: #1f6feb;
+}
+
+QLineEdit, QComboBox {
+    background: #0d1117;
+    color: #e6edf3;
+    border: 1px solid #30363d;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+QGroupBox {
+    border: 1px solid #30363d;
+    margin-top: 8px;
+    padding-top: 8px;
+    color: #8b949e;
+}
+
+QScrollBar:vertical {
+    background: #161b22;
+    width: 10px;
+}
+
+QScrollBar::handle:vertical {
+    background: #30363d;
+    border-radius: 4px;
+}

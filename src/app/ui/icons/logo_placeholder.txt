@@ -1,0 +1,1 @@
+# Placeholder for Qt resource icon — replace with PNG in production.

@@ -1,0 +1,6 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+<qresource prefix="/optiondesk">
+    <file alias="logo.png">icons/logo_placeholder.txt</file>
+</qresource>
+</RCC>

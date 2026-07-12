@@ -1,0 +1,87 @@
+"""UI event bridge to application EventBus."""
+
+from PySide6.QtCore import QObject, Signal
+
+from app.application.events import (
+    PortfolioLoadedEvent,
+    RecommendationReadyEvent,
+    StrategyLoadedEvent,
+    WorkspaceOpenedEvent,
+)
+from app.brokers.events import (AuthenticationFailedEvent,
+                                AuthenticationSucceededEvent,
+                                BrokerConnectedEvent, BrokerDisconnectedEvent,
+                                SessionExpiredEvent)
+from app.events.event_bus import EventBus
+from app.monitor.events import AlertRaisedEvent
+
+
+class UIEventBridge(QObject):
+    """Bridge application events to Qt signals for ViewModels."""
+
+    market_updated = Signal(dict)
+    portfolio_updated = Signal(dict)
+    strategy_updated = Signal(dict)
+    alert_raised = Signal(dict)
+    recommendation_ready = Signal(dict)
+    workspace_opened = Signal(dict)
+    broker_connected = Signal(dict)
+    broker_disconnected = Signal(dict)
+    session_expired = Signal(dict)
+    authentication_succeeded = Signal(dict)
+    authentication_failed = Signal(dict)
+
+    def __init__(self, event_bus: EventBus | None, parent: QObject | None = None) -> None:
+        """Initialize bridge."""
+        super().__init__(parent)
+        self._bus = event_bus
+        if event_bus is not None:
+            self._subscribe()
+
+    def _subscribe(self) -> None:
+        """Subscribe to application events."""
+        assert self._bus is not None
+        self._bus.subscribe(PortfolioLoadedEvent, self._on_portfolio)
+        self._bus.subscribe(StrategyLoadedEvent, self._on_strategy)
+        self._bus.subscribe(RecommendationReadyEvent, self._on_recommendation)
+        self._bus.subscribe(AlertRaisedEvent, self._on_alert)
+        self._bus.subscribe(WorkspaceOpenedEvent, self._on_workspace)
+        self._bus.subscribe(BrokerConnectedEvent, self._on_broker_connected)
+        self._bus.subscribe(BrokerDisconnectedEvent, self._on_broker_disconnected)
+        self._bus.subscribe(SessionExpiredEvent, self._on_session_expired)
+        self._bus.subscribe(AuthenticationSucceededEvent, self._on_auth_success)
+        self._bus.subscribe(AuthenticationFailedEvent, self._on_auth_failed)
+
+    def _on_portfolio(self, event: PortfolioLoadedEvent) -> None:
+        self.portfolio_updated.emit(event.payload)
+
+    def _on_strategy(self, event: StrategyLoadedEvent) -> None:
+        self.strategy_updated.emit(event.payload)
+
+    def _on_recommendation(self, event: RecommendationReadyEvent) -> None:
+        self.recommendation_ready.emit(event.payload)
+
+    def _on_alert(self, event: AlertRaisedEvent) -> None:
+        self.alert_raised.emit(event.payload)
+
+    def _on_workspace(self, event: WorkspaceOpenedEvent) -> None:
+        self.workspace_opened.emit(event.payload)
+
+    def _on_broker_connected(self, event: BrokerConnectedEvent) -> None:
+        self.broker_connected.emit(event.payload)
+
+    def _on_broker_disconnected(self, event: BrokerDisconnectedEvent) -> None:
+        self.broker_disconnected.emit(event.payload)
+
+    def _on_session_expired(self, event: SessionExpiredEvent) -> None:
+        self.session_expired.emit(event.payload)
+
+    def _on_auth_success(self, event: AuthenticationSucceededEvent) -> None:
+        self.authentication_succeeded.emit(event.payload)
+
+    def _on_auth_failed(self, event: AuthenticationFailedEvent) -> None:
+        self.authentication_failed.emit(event.payload)
+
+    def emit_market_update(self, payload: dict) -> None:
+        """Emit market update for UI refresh."""
+        self.market_updated.emit(payload)

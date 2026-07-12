@@ -1,0 +1,50 @@
+"""Strategy workspace ViewModel."""
+
+from PySide6.QtCore import Property, Signal
+
+from app.ui.commands.ui_command import RelayCommand
+from app.ui.viewmodels.base_viewmodel import BaseViewModel
+from app.ui.viewmodels.context import ViewModelContext
+
+
+class StrategyViewModel(BaseViewModel):
+    """ViewModel for strategy workspace."""
+
+    strategies_changed = Signal(list)
+
+    def __init__(self, ctx: ViewModelContext, parent=None) -> None:
+        super().__init__(parent)
+        self._ctx = ctx
+        self._strategies: list = []
+        self.open_command = RelayCommand(self.open_selected, parent=self)
+        self.save_command = RelayCommand(self.save, parent=self)
+        self.refresh_command = RelayCommand(self.refresh, parent=self)
+        self._ctx.events.strategy_updated.connect(self._on_strategy_updated)
+
+    @Property(list, notify=strategies_changed)
+    def strategies(self) -> list:
+        return self._strategies
+
+    def refresh(self) -> None:
+        result = self._ctx.provider.strategy.list_strategies(self._ctx.session_id)
+        self._strategies = list(result.data or [])
+        self.strategies_changed.emit(self._strategies)
+        self.status_message = result.message
+
+    def open_selected(self) -> None:
+        self.status_message = "Select strategy to open"
+
+    def open_strategy(self, strategy_id: str) -> None:
+        result = self._ctx.provider.strategy.load_strategy(
+            self._ctx.session_id,
+            strategy_id,
+        )
+        if result.success:
+            self._ctx.provider.coordinator.notify_strategy_loaded(strategy_id)
+        self.status_message = result.message
+
+    def save(self) -> None:
+        self.status_message = "Save strategy from builder"
+
+    def _on_strategy_updated(self, _payload: dict) -> None:
+        self.refresh()
