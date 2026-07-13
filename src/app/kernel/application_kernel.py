@@ -173,6 +173,12 @@ class ApplicationKernel:
         self.configuration_manager.validate()
         FileHelper.ensure_directory(data_dir)
 
+        from app.market_data.diagnostics import configure_market_data_debug
+
+        configure_market_data_debug(
+            self.configuration_manager.configuration.application.market_data_debug
+        )
+
         self._container.configuration_manager.override(self.configuration_manager)
 
     def _bootstrap_logging(self) -> None:

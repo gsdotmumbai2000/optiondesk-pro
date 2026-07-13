@@ -8,7 +8,7 @@ from typing import Protocol
 
 from app.events.event_bus import EventBus
 from app.logging.logging_manager import get_logger
-from app.market_data.diagnostics import market_data_debug_enabled
+from app.market_data.diagnostics import log_market_data_diagnostic, log_tick_diagnostic
 from app.market_data.events import (
     FutureUpdatedEvent,
     OptionUpdatedEvent,
@@ -94,17 +94,14 @@ class EventDispatcher:
             return
         self._fingerprints[key] = fingerprint
         self._cache.put_tick(tick)
-        if market_data_debug_enabled():
-            logger.info(
-                "[DISPATCHER] DISPATCHER TICK "
-                "exchange={exchange} symbol={symbol} ltp={ltp} "
-                "queue_size={queue_size} tick_count={tick_count}",
-                exchange=tick.exchange,
-                symbol=tick.symbol,
-                ltp=tick.ltp,
-                queue_size=self._queue.qsize(),
-                tick_count=self._statistics.total_ticks + 1,
-            )
+        log_tick_diagnostic(
+            logger,
+            "DISPATCHER",
+            "tick cached",
+            tick,
+            queue_size=self._queue.qsize(),
+            tick_count=self._statistics.total_ticks + 1,
+        )
         self._statistics.record_tick()
         self._publish_events(tick)
         if self._statistics.total_ticks % 500 == 0:
@@ -124,6 +121,7 @@ class EventDispatcher:
         if self._event_bus is None:
             return
         payload = {"tick": tick.model_dump(mode="json")}
+        log_tick_diagnostic(logger, "EVENTBUS", "publishing tick events", tick)
         self._event_bus.publish(TickReceivedEvent(payload=payload))
         self._event_bus.publish(PriceUpdatedEvent(payload=payload))
         self._event_bus.publish(QuoteUpdatedEvent(payload=payload))

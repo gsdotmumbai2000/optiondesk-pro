@@ -25,6 +25,7 @@ class ApplicationConfig(BaseModel):
     data_directory: str = ""
     auto_save_interval_sec: int = 300
     check_updates_on_startup: bool = True
+    market_data_debug: bool = True
 
 
 class DatabaseConnectionConfig(BaseModel):

@@ -14,7 +14,7 @@ from app.brokers.events import (AuthenticationFailedEvent,
                                 SessionExpiredEvent)
 from app.events.event_bus import EventBus
 from app.logging.logging_manager import get_logger
-from app.market_data.diagnostics import market_data_debug_enabled
+from app.market_data.diagnostics import log_tick_diagnostic
 from app.market_data.events import (MarketClosedEvent, MarketOpenedEvent,
                                     QuoteUpdatedEvent, TickReceivedEvent)
 from app.monitor.events import AlertRaisedEvent
@@ -97,14 +97,7 @@ class UIEventBridge(QObject):
 
     def _on_tick(self, event: TickReceivedEvent) -> None:
         tick = event.payload.get("tick", {})
-        if market_data_debug_enabled():
-            logger.info(
-                "[UI-BRIDGE] UI EVENT BRIDGE "
-                "symbol={symbol} ltp={ltp} timestamp={timestamp}",
-                symbol=tick.get("symbol"),
-                ltp=tick.get("ltp"),
-                timestamp=tick.get("timestamp"),
-            )
+        log_tick_diagnostic(logger, "UI-BRIDGE", "forwarding tick to UI", tick)
         self.tick_received.emit(event.payload)
         self.market_updated.emit(event.payload)
 
