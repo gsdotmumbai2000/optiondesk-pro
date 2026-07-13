@@ -6,8 +6,10 @@ from decimal import Decimal
 from app.application.cache.workspace_cache import WorkspaceCache
 from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult, WorkspaceView
+from app.application.ports.live_analytics_port import LiveAnalyticsPort
 from app.application.ports.market_data_port import MarketDataPort
 from app.application.registry.engine_registry import EngineRegistry
+from app.application.services.live_analytics_support import LiveAnalyticsSupport
 from app.application.services.market_data_support import MarketDataSupport
 from app.application.session.session_manager import SessionManager
 from app.monitor.models.request import MonitorAnalysisRequest
@@ -17,7 +19,7 @@ from app.portfolio.models.request import PortfolioAnalysisRequest
 from app.portfolio.models.result import PortfolioResult
 
 
-class PortfolioWorkspaceService(MarketDataSupport):
+class PortfolioWorkspaceService(MarketDataSupport, LiveAnalyticsSupport):
     """Portfolio management workspace API for UI."""
 
     def __init__(
@@ -26,9 +28,11 @@ class PortfolioWorkspaceService(MarketDataSupport):
         sessions: SessionManager,
         cache: WorkspaceCache,
         market_data: MarketDataPort | None = None,
+        live_analytics: LiveAnalyticsPort | None = None,
     ) -> None:
         """Initialize service."""
-        super().__init__(market_data)
+        MarketDataSupport.__init__(self, market_data)
+        LiveAnalyticsSupport.__init__(self, live_analytics)
         self._engines = engines
         self._sessions = sessions
         self._cache = cache
@@ -179,4 +183,23 @@ class PortfolioWorkspaceService(MarketDataSupport):
             WorkspaceType.PORTFOLIO,
             f"Live prices for {len(symbols)} symbols",
             prices,
+        )
+
+    def live_position_analytics(
+        self,
+        session_id: str,
+        symbol: str,
+        exchange: str = "NSE",
+        expiry_date: str = "",
+    ) -> WorkspaceOperationResult:
+        """Return live analytics for a monitored position."""
+        snapshot = self.live_analytics_snapshot(symbol, exchange, expiry_date)
+        payload = {}
+        if snapshot is not None and snapshot.position_greeks is not None:
+            payload = dict(snapshot.position_greeks)
+        return WorkspaceOperationResult(
+            snapshot is not None,
+            WorkspaceType.PORTFOLIO,
+            f"Live analytics for {symbol}",
+            payload,
         )

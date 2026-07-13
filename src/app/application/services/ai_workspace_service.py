@@ -8,13 +8,15 @@ from app.ai.models.result import RecommendationResult
 from app.application.cache.workspace_cache import WorkspaceCache
 from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult, WorkspaceView
+from app.application.ports.live_analytics_port import LiveAnalyticsPort
 from app.application.ports.market_data_port import MarketDataPort
 from app.application.registry.engine_registry import EngineRegistry
+from app.application.services.live_analytics_support import LiveAnalyticsSupport
 from app.application.services.market_data_support import MarketDataSupport
 from app.application.session.session_manager import SessionManager
 
 
-class AIWorkspaceService(MarketDataSupport):
+class AIWorkspaceService(MarketDataSupport, LiveAnalyticsSupport):
     """AI recommendation workspace API for UI."""
 
     def __init__(
@@ -23,9 +25,11 @@ class AIWorkspaceService(MarketDataSupport):
         sessions: SessionManager,
         cache: WorkspaceCache,
         market_data: MarketDataPort | None = None,
+        live_analytics: LiveAnalyticsPort | None = None,
     ) -> None:
         """Initialize service."""
-        super().__init__(market_data)
+        MarketDataSupport.__init__(self, market_data)
+        LiveAnalyticsSupport.__init__(self, live_analytics)
         self._engines = engines
         self._sessions = sessions
         self._cache = cache
@@ -112,4 +116,27 @@ class AIWorkspaceService(MarketDataSupport):
             WorkspaceType.AI,
             f"Context price for {symbol}",
             {"symbol": symbol, "exchange": exchange, "price": str(price or "")},
+        )
+
+    def live_recommendation_context(
+        self,
+        session_id: str,
+        symbol: str,
+        exchange: str = "NSE",
+        expiry_date: str = "",
+    ) -> WorkspaceOperationResult:
+        """Return live analytics context for AI recommendations."""
+        snapshot = self.live_analytics_snapshot(symbol, exchange, expiry_date)
+        payload = {}
+        if snapshot is not None:
+            payload = {
+                "underlying": snapshot.underlying,
+                "has_chain_analysis": snapshot.chain_analysis is not None,
+                "has_probability": snapshot.probability is not None,
+            }
+        return WorkspaceOperationResult(
+            snapshot is not None,
+            WorkspaceType.AI,
+            f"AI context for {symbol}",
+            payload,
         )

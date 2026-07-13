@@ -5,14 +5,16 @@ from datetime import datetime, timezone
 from app.application.cache.workspace_cache import WorkspaceCache
 from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult, WorkspaceView
+from app.application.ports.live_analytics_port import LiveAnalyticsPort
 from app.application.ports.market_data_port import MarketDataPort
 from app.application.registry.engine_registry import EngineRegistry
+from app.application.services.live_analytics_support import LiveAnalyticsSupport
 from app.application.services.market_data_support import MarketDataSupport
 from app.application.session.session_manager import SessionManager
 from app.strategy.models.strategy import Strategy
 
 
-class StrategyWorkspaceService(MarketDataSupport):
+class StrategyWorkspaceService(MarketDataSupport, LiveAnalyticsSupport):
     """Strategy CRUD and template workspace API."""
 
     def __init__(
@@ -21,9 +23,11 @@ class StrategyWorkspaceService(MarketDataSupport):
         sessions: SessionManager,
         cache: WorkspaceCache,
         market_data: MarketDataPort | None = None,
+        live_analytics: LiveAnalyticsPort | None = None,
     ) -> None:
         """Initialize service."""
-        super().__init__(market_data)
+        MarketDataSupport.__init__(self, market_data)
+        LiveAnalyticsSupport.__init__(self, live_analytics)
         self._engines = engines
         self._sessions = sessions
         self._cache = cache
@@ -117,4 +121,20 @@ class StrategyWorkspaceService(MarketDataSupport):
             WorkspaceType.STRATEGY,
             f"Price for {symbol}",
             {"symbol": symbol, "exchange": exchange, "price": str(price or "")},
+        )
+
+    def live_chain_context(
+        self,
+        symbol: str,
+        exchange: str = "NSE",
+        expiry_date: str = "",
+    ) -> WorkspaceOperationResult:
+        """Return live option chain for strategy evaluation."""
+        chain = self.live_option_chain(symbol, exchange, expiry_date)
+        payload = chain.model_dump(mode="json") if chain is not None else {}
+        return WorkspaceOperationResult(
+            chain is not None,
+            WorkspaceType.STRATEGY,
+            f"Live chain for {symbol}",
+            payload,
         )

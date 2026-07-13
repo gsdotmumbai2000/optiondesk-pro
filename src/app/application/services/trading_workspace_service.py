@@ -7,8 +7,10 @@ from app.ai.models.request import RecommendationAnalysisRequest
 from app.application.cache.workspace_cache import WorkspaceCache
 from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult, WorkspaceView
+from app.application.ports.live_analytics_port import LiveAnalyticsPort
 from app.application.ports.market_data_port import MarketDataPort
 from app.application.registry.engine_registry import EngineRegistry
+from app.application.services.live_analytics_support import LiveAnalyticsSupport
 from app.application.services.market_data_support import MarketDataSupport
 from app.application.session.session_manager import SessionManager
 from app.backtesting.models.request import BacktestRequest
@@ -20,7 +22,7 @@ from app.strategy_optimizer.models.request import OptimizationRequest
 from app.strategy_optimizer.models.result import OptimizationResult
 
 
-class TradingWorkspaceService(MarketDataSupport):
+class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport):
     """Trading workflow orchestration API for UI."""
 
     def __init__(
@@ -29,9 +31,11 @@ class TradingWorkspaceService(MarketDataSupport):
         sessions: SessionManager,
         cache: WorkspaceCache,
         market_data: MarketDataPort | None = None,
+        live_analytics: LiveAnalyticsPort | None = None,
     ) -> None:
         """Initialize service."""
-        super().__init__(market_data)
+        MarketDataSupport.__init__(self, market_data)
+        LiveAnalyticsSupport.__init__(self, live_analytics)
         self._engines = engines
         self._sessions = sessions
         self._cache = cache
@@ -162,5 +166,28 @@ class TradingWorkspaceService(MarketDataSupport):
             tick is not None,
             WorkspaceType.TRADING,
             f"Live quote for {symbol}",
+            payload,
+        )
+
+    def live_trading_analytics(
+        self,
+        session_id: str,
+        symbol: str,
+        exchange: str = "NSE",
+        expiry_date: str = "",
+    ) -> WorkspaceOperationResult:
+        """Return live analytics for trading decisions."""
+        snapshot = self.live_analytics_snapshot(symbol, exchange, expiry_date)
+        payload = {}
+        if snapshot is not None:
+            payload = {
+                "underlying": snapshot.underlying,
+                "margin": snapshot.margin is not None,
+                "risk": snapshot.risk is not None,
+            }
+        return WorkspaceOperationResult(
+            snapshot is not None,
+            WorkspaceType.TRADING,
+            f"Live analytics for {symbol}",
             payload,
         )

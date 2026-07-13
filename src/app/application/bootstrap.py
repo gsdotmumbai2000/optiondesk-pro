@@ -20,6 +20,7 @@ from app.application.session.session_manager import SessionManager
 from app.application.validation.application_validator import ApplicationValidator
 from app.brokers.bootstrap import BrokerProvider
 from app.events.event_bus import EventBus
+from app.live.bootstrap import LiveAnalyticsProvider
 from app.market_data.bootstrap import MarketDataProvider
 from app.services.broker.connection_status_service import ConnectionStatusService
 
@@ -41,22 +42,54 @@ class ApplicationProvider:
         self.cache = WorkspaceCache()
         self.sessions = SessionManager()
         self.market_data_service = market_data.service if market_data is not None else None
+        self.live_analytics_provider = (
+            LiveAnalyticsProvider(event_bus, self.market_data_service, self.engines)
+            if event_bus is not None and self.market_data_service is not None
+            else None
+        )
+        self.live_analytics_service = (
+            self.live_analytics_provider.service
+            if self.live_analytics_provider is not None
+            else None
+        )
+        if self.live_analytics_provider is not None:
+            self.live_analytics_provider.start()
 
         self.trading = TradingWorkspaceService(
-            self.engines, self.sessions, self.cache, self.market_data_service
+            self.engines,
+            self.sessions,
+            self.cache,
+            self.market_data_service,
+            self.live_analytics_service,
         )
         self.strategy = StrategyWorkspaceService(
-            self.engines, self.sessions, self.cache, self.market_data_service
+            self.engines,
+            self.sessions,
+            self.cache,
+            self.market_data_service,
+            self.live_analytics_service,
         )
         self.portfolio = PortfolioWorkspaceService(
-            self.engines, self.sessions, self.cache, self.market_data_service
+            self.engines,
+            self.sessions,
+            self.cache,
+            self.market_data_service,
+            self.live_analytics_service,
         )
         self.backtesting = BacktestingWorkspaceService(self.engines, self.sessions, self.cache)
         self.market = MarketWorkspaceService(
-            self.engines, self.sessions, self.cache, self.market_data_service
+            self.engines,
+            self.sessions,
+            self.cache,
+            self.market_data_service,
+            self.live_analytics_service,
         )
         self.ai = AIWorkspaceService(
-            self.engines, self.sessions, self.cache, self.market_data_service
+            self.engines,
+            self.sessions,
+            self.cache,
+            self.market_data_service,
+            self.live_analytics_service,
         )
         self.order = OrderWorkspaceService(self.engines, self.sessions, self.cache)
         self.settings = SettingsWorkspaceService(self.sessions)

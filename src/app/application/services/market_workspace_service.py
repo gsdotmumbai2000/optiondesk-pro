@@ -5,14 +5,16 @@ from datetime import datetime, timezone
 from app.application.cache.workspace_cache import WorkspaceCache
 from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult, WorkspaceView
+from app.application.ports.live_analytics_port import LiveAnalyticsPort
 from app.application.registry.engine_registry import EngineRegistry
+from app.application.services.live_analytics_support import LiveAnalyticsSupport
 from app.application.session.session_manager import SessionManager
 from app.brokers.shared.enums import ProductType
 from app.market_data.models.snapshot import MarketSnapshot
 from app.market_data.services.market_data_service import MarketDataService
 
 
-class MarketWorkspaceService:
+class MarketWorkspaceService(LiveAnalyticsSupport):
     """Market data workspace API for UI."""
 
     def __init__(
@@ -21,8 +23,10 @@ class MarketWorkspaceService:
         sessions: SessionManager,
         cache: WorkspaceCache,
         market_data: MarketDataService | None = None,
+        live_analytics: LiveAnalyticsPort | None = None,
     ) -> None:
         """Initialize service."""
+        super().__init__(live_analytics)
         self._engines = engines
         self._sessions = sessions
         self._cache = cache
@@ -136,13 +140,50 @@ class MarketWorkspaceService:
             payload,
         )
 
-    def option_chain(self, session_id: str, symbol: str) -> WorkspaceOperationResult:
-        """Return option chain context (framework)."""
+    def option_chain(
+        self,
+        session_id: str,
+        symbol: str,
+        *,
+        exchange: str = "NSE",
+        expiry_date: str = "",
+    ) -> WorkspaceOperationResult:
+        """Return live option chain analytics."""
+        chain = self.live_option_chain(symbol, exchange, expiry_date)
+        payload = chain.model_dump(mode="json") if chain is not None else {}
+        if chain is not None:
+            self._cache.put_data(f"{session_id}:chain:{symbol}", payload)
         return WorkspaceOperationResult(
-            True,
+            chain is not None,
             WorkspaceType.MARKET,
             f"Option chain for {symbol}",
-            self._cache.get_data(f"{session_id}:chain:{symbol}"),
+            payload,
+        )
+
+    def live_analytics(
+        self,
+        session_id: str,
+        symbol: str,
+        *,
+        exchange: str = "NSE",
+        expiry_date: str = "",
+    ) -> WorkspaceOperationResult:
+        """Return live analytics snapshot for symbol."""
+        snapshot = self.live_analytics_snapshot(symbol, exchange, expiry_date)
+        payload = {}
+        if snapshot is not None:
+            payload = {
+                "underlying": snapshot.underlying,
+                "exchange": snapshot.exchange,
+                "expiry_date": snapshot.expiry_date,
+                "calculation_timestamp": str(snapshot.calculation_timestamp or ""),
+            }
+            self._cache.put_data(f"{session_id}:analytics:{symbol}", payload)
+        return WorkspaceOperationResult(
+            snapshot is not None,
+            WorkspaceType.MARKET,
+            f"Live analytics for {symbol}",
+            payload,
         )
 
     def market_scanner(self, session_id: str) -> WorkspaceOperationResult:
