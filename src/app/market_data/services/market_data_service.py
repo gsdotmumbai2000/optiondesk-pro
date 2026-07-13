@@ -6,12 +6,16 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from app.brokers.shared.enums import ProductType
+from app.logging.logging_manager import get_logger
+from app.market_data.diagnostics import market_data_debug_enabled
 from app.market_data.models.tick import TickSnapshot
 from app.market_data.models.live_status import MarketStatusSnapshot
 from app.market_data.websocket.connection_state import MarketDataConnectionState
 
 if TYPE_CHECKING:
     from app.market_data.providers.live_market_provider import LiveMarketDataProvider
+
+logger = get_logger(__name__)
 
 
 class MarketDataService:
@@ -105,7 +109,15 @@ class MarketDataService:
 
     def latest_tick(self, symbol: str, exchange: str, **parts: str) -> TickSnapshot | None:
         """Return latest tick snapshot (may be stale)."""
-        return self._provider.cache.get_tick(exchange, symbol, **parts)
+        tick = self._provider.cache.get_tick(exchange, symbol, **parts)
+        if market_data_debug_enabled():
+            logger.info(
+                "[CACHE] CACHE LOOKUP exchange={exchange} symbol={symbol} tick={tick}",
+                exchange=exchange,
+                symbol=symbol,
+                tick=tick,
+            )
+        return tick
 
     def market_status(self) -> MarketStatusSnapshot:
         """Return current market status."""
@@ -125,4 +137,10 @@ class MarketDataService:
 
     def cache_snapshot(self) -> dict[str, TickSnapshot]:
         """Return snapshot of all cached ticks."""
-        return self._provider.cache.snapshot_ticks()
+        snapshot = self._provider.cache.snapshot_ticks()
+        if market_data_debug_enabled():
+            logger.info(
+                "[CACHE] CACHE SNAPSHOT symbol_count={symbol_count}",
+                symbol_count=len(snapshot),
+            )
+        return snapshot

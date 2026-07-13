@@ -8,6 +8,7 @@ from app.brokers.broker_interface.interface import BrokerInterface
 from app.brokers.breeze.normalizers.quote_normalizer import normalize_quote as breeze_quote
 from app.events.event_bus import EventBus
 from app.logging.logging_manager import get_logger
+from app.market_data.diagnostics import market_data_debug_enabled
 from app.market_data.dispatcher.event_dispatcher import EventDispatcher
 from app.market_data.models.quote import OHLC
 from app.market_data.models.tick import TickSnapshot
@@ -114,5 +115,18 @@ class WebSocketService:
             option_right=str(item.get("right", "")),
         )
         self._dispatcher.enqueue(tick)
+        if market_data_debug_enabled():
+            logger.info(
+                "[WEBSOCKET] WEBSOCKET TICK "
+                "exchange={exchange} symbol={symbol} ltp={ltp} bid={bid} ask={ask} "
+                "volume={volume} timestamp={timestamp}",
+                exchange=tick.exchange,
+                symbol=tick.symbol,
+                ltp=tick.ltp,
+                bid=tick.bid,
+                ask=tick.ask,
+                volume=tick.volume,
+                timestamp=tick.timestamp,
+            )
         with self._lock:
             self._last_message = datetime.now(timezone.utc)

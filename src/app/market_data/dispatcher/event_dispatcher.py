@@ -8,6 +8,7 @@ from typing import Protocol
 
 from app.events.event_bus import EventBus
 from app.logging.logging_manager import get_logger
+from app.market_data.diagnostics import market_data_debug_enabled
 from app.market_data.events import (
     FutureUpdatedEvent,
     OptionUpdatedEvent,
@@ -93,6 +94,17 @@ class EventDispatcher:
             return
         self._fingerprints[key] = fingerprint
         self._cache.put_tick(tick)
+        if market_data_debug_enabled():
+            logger.info(
+                "[DISPATCHER] DISPATCHER TICK "
+                "exchange={exchange} symbol={symbol} ltp={ltp} "
+                "queue_size={queue_size} tick_count={tick_count}",
+                exchange=tick.exchange,
+                symbol=tick.symbol,
+                ltp=tick.ltp,
+                queue_size=self._queue.qsize(),
+                tick_count=self._statistics.total_ticks + 1,
+            )
         self._statistics.record_tick()
         self._publish_events(tick)
         if self._statistics.total_ticks % 500 == 0:

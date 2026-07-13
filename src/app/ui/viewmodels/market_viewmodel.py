@@ -2,10 +2,13 @@
 
 from PySide6.QtCore import Property, Signal
 
+from app.logging.logging_manager import get_logger
+from app.market_data.diagnostics import market_data_debug_enabled
 from app.ui.commands.ui_command import RelayCommand
 from app.ui.viewmodels.base_viewmodel import BaseViewModel
 from app.ui.viewmodels.context import ViewModelContext
 
+logger = get_logger(__name__)
 
 class MarketViewModel(BaseViewModel):
     """ViewModel for market workspace."""
@@ -112,15 +115,24 @@ class MarketViewModel(BaseViewModel):
         self._load_status()
 
     def _on_tick(self, payload: dict) -> None:
+        if market_data_debug_enabled():
+            logger.info("[VIEWMODEL] VIEWMODEL RECEIVED TICK payload={payload}", payload=payload)
         tick = payload.get("tick", payload)
         if tick.get("symbol") == self._spot_symbol:
             self._apply_tick(tick)
         self.tick_updated.emit(tick)
-
     def _on_market_status(self, payload: dict) -> None:
         self._load_status()
 
     def _apply_tick(self, tick: dict) -> None:
+        if market_data_debug_enabled():
+            logger.info(
+                "[VIEWMODEL] VIEWMODEL APPLY TICK "
+                "symbol={symbol} ltp={ltp} timestamp={timestamp}",
+                symbol=tick.get("symbol"),
+                ltp=tick.get("ltp"),
+                timestamp=tick.get("timestamp"),
+            )
         self._spot_price = str(tick.get("ltp", "—"))
         self._last_update = str(tick.get("timestamp", "—"))
         self.tick_updated.emit(tick)
