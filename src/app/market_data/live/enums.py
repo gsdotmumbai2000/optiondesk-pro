@@ -1,22 +1,6 @@
-"""Live market data enumerations."""
+"""Backward-compatible live enumerations."""
 
-from enum import Enum
+from app.market_data.models.live_status import LiveMarketStatus
+from app.market_data.websocket.enums import LiveConnectionStatus
 
-
-class LiveMarketStatus(str, Enum):
-    """User-facing live market status."""
-
-    PRE_OPEN = "Pre Open"
-    OPEN = "Open"
-    CLOSED = "Closed"
-    HOLIDAY = "Holiday"
-    CONNECTION_LOST = "Connection Lost"
-
-
-class LiveConnectionStatus(str, Enum):
-    """WebSocket connection status."""
-
-    DISCONNECTED = "Disconnected"
-    CONNECTING = "Connecting"
-    CONNECTED = "Connected"
-    RECONNECTING = "Reconnecting"
+__all__ = ["LiveConnectionStatus", "LiveMarketStatus"]

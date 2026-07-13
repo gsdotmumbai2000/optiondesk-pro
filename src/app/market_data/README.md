@@ -34,9 +34,23 @@ provider.stop()
 - `get_latest`, `get_snapshot`, `get_atm_strike`
 - `get_future`, `get_spot`, `get_oi`, `get_volume`
 
+## Live Feed (Enterprise)
+
+The enterprise live engine (`LiveMarketDataEngine`) is the **single source of live prices**:
+
+```python
+provider = MarketDataProvider(broker, Path("./data"), event_bus)
+provider.start()
+price = provider.service.latest_price("NIFTY", "NSE")
+bundle = provider.bundle  # subscriptions, websocket, reconnect, cache
+provider.stop()
+```
+
+See `docs/market_data/` for connection lifecycle, subscription lifecycle, and sequence diagrams.
+
 ## Events
 
-`QuoteUpdated`, `FutureUpdated`, `OptionChainUpdated`, `MarketOpened`, `MarketClosed`, `SnapshotUpdated`
+`PriceUpdated`, `QuoteUpdated`, `OptionUpdated`, `FutureUpdated`, `ConnectionEstablished`, `ConnectionLost`, `ReconnectStarted`, `ReconnectCompleted`, `TickReceived`, `MarketOpened`, `MarketClosed`, `SnapshotUpdated`
 
 ## Workers
 

@@ -5,12 +5,14 @@ from datetime import datetime, timezone
 from app.application.cache.workspace_cache import WorkspaceCache
 from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult, WorkspaceView
+from app.application.ports.market_data_port import MarketDataPort
 from app.application.registry.engine_registry import EngineRegistry
+from app.application.services.market_data_support import MarketDataSupport
 from app.application.session.session_manager import SessionManager
 from app.strategy.models.strategy import Strategy
 
 
-class StrategyWorkspaceService:
+class StrategyWorkspaceService(MarketDataSupport):
     """Strategy CRUD and template workspace API."""
 
     def __init__(
@@ -18,8 +20,10 @@ class StrategyWorkspaceService:
         engines: EngineRegistry,
         sessions: SessionManager,
         cache: WorkspaceCache,
+        market_data: MarketDataPort | None = None,
     ) -> None:
         """Initialize service."""
+        super().__init__(market_data)
         self._engines = engines
         self._sessions = sessions
         self._cache = cache
@@ -103,4 +107,14 @@ class StrategyWorkspaceService:
             summary=f"{count} strategies, {len(session.recent_strategies)} recent",
             entity_id="",
             updated_at=datetime.now(timezone.utc),
+        )
+
+    def underlying_price(self, symbol: str, exchange: str = "NSE") -> WorkspaceOperationResult:
+        """Return live underlying price for strategy context."""
+        price = self.latest_price(symbol, exchange)
+        return WorkspaceOperationResult(
+            price is not None,
+            WorkspaceType.STRATEGY,
+            f"Price for {symbol}",
+            {"symbol": symbol, "exchange": exchange, "price": str(price or "")},
         )

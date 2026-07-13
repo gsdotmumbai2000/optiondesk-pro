@@ -1,15 +1,5 @@
-"""Reconnect handling for live market data."""
+"""Backward-compatible reconnect manager export."""
 
-from app.logging.logging_manager import get_logger
-from app.market_data.live.connection_state import MarketDataConnectionStateMachine
+from app.market_data.services.reconnect_service import ReconnectService as ReconnectManager
 
-logger = get_logger(__name__)
-
-
-class ReconnectManager:
-    """Delegate reconnect lifecycle to the connection state machine."""
-
-    def __init__(self, connection: MarketDataConnectionStateMachine) -> None:
-        """Initialize reconnect manager."""
-        self._connection = connection
-        logger.debug("Market data reconnect manager wired to state machine")
+__all__ = ["ReconnectManager"]

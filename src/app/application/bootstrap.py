@@ -42,14 +42,22 @@ class ApplicationProvider:
         self.sessions = SessionManager()
         self.market_data_service = market_data.service if market_data is not None else None
 
-        self.trading = TradingWorkspaceService(self.engines, self.sessions, self.cache)
-        self.strategy = StrategyWorkspaceService(self.engines, self.sessions, self.cache)
-        self.portfolio = PortfolioWorkspaceService(self.engines, self.sessions, self.cache)
+        self.trading = TradingWorkspaceService(
+            self.engines, self.sessions, self.cache, self.market_data_service
+        )
+        self.strategy = StrategyWorkspaceService(
+            self.engines, self.sessions, self.cache, self.market_data_service
+        )
+        self.portfolio = PortfolioWorkspaceService(
+            self.engines, self.sessions, self.cache, self.market_data_service
+        )
         self.backtesting = BacktestingWorkspaceService(self.engines, self.sessions, self.cache)
         self.market = MarketWorkspaceService(
             self.engines, self.sessions, self.cache, self.market_data_service
         )
-        self.ai = AIWorkspaceService(self.engines, self.sessions, self.cache)
+        self.ai = AIWorkspaceService(
+            self.engines, self.sessions, self.cache, self.market_data_service
+        )
         self.order = OrderWorkspaceService(self.engines, self.sessions, self.cache)
         self.settings = SettingsWorkspaceService(self.sessions)
         self.broker = (

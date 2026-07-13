@@ -1,12 +1,17 @@
 """Public market data service API."""
 
+from __future__ import annotations
+
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from app.brokers.shared.enums import ProductType
-from app.market_data.live.connection_state import MarketDataConnectionState
-from app.market_data.live.live_provider import LiveMarketDataProvider
-from app.market_data.live.market_status_detector import MarketStatusSnapshot
 from app.market_data.models.tick import TickSnapshot
+from app.market_data.models.live_status import MarketStatusSnapshot
+from app.market_data.websocket.connection_state import MarketDataConnectionState
+
+if TYPE_CHECKING:
+    from app.market_data.providers.live_market_provider import LiveMarketDataProvider
 
 
 class MarketDataService:
@@ -29,10 +34,10 @@ class MarketDataService:
         product_type: ProductType = ProductType.CASH,
     ) -> None:
         """Load watchlist symbols as pending subscriptions."""
-        for symbol in symbols:
-            self._provider.subscriptions.register(
-                symbol, exchange, product_type=product_type
-            )
+        self._provider.subscriptions.bulk_subscribe(
+            ((symbol, exchange) for symbol in symbols),
+            product_type=product_type,
+        )
 
     def subscribe(
         self,
@@ -45,7 +50,7 @@ class MarketDataService:
         option_right: str = "",
     ) -> None:
         """Register symbol; broker subscribe only when connected."""
-        self._provider.subscriptions.register(
+        self._provider.subscriptions.subscribe(
             symbol,
             exchange,
             product_type=product_type,
@@ -64,7 +69,7 @@ class MarketDataService:
         strike_price: str = "",
     ) -> None:
         """Remove symbol from watchlist."""
-        self._provider.subscriptions.remove(
+        self._provider.subscriptions.unsubscribe(
             symbol,
             exchange,
             product_type=product_type,
@@ -72,14 +77,35 @@ class MarketDataService:
             strike_price=strike_price,
         )
 
+    def bulk_subscribe(
+        self,
+        symbols: tuple[tuple[str, str], ...],
+        *,
+        product_type: ProductType = ProductType.CASH,
+    ) -> None:
+        """Subscribe multiple symbols."""
+        self._provider.subscriptions.bulk_subscribe(symbols, product_type=product_type)
+
+    def bulk_unsubscribe(
+        self,
+        symbols: tuple[tuple[str, str], ...],
+        *,
+        product_type: ProductType = ProductType.CASH,
+    ) -> None:
+        """Unsubscribe multiple symbols."""
+        self._provider.subscriptions.bulk_unsubscribe(symbols, product_type=product_type)
+
+    def resubscribe_all(self) -> None:
+        """Resubscribe all active symbols."""
+        self._provider.subscriptions.resubscribe_all()
+
     def latest_price(self, symbol: str, exchange: str, **parts: str) -> Decimal | None:
         """Return latest price for a symbol."""
-        tick = self.latest_tick(symbol, exchange, **parts)
-        return tick.ltp if tick is not None else None
+        return self._provider.cache.latest_price(exchange, symbol, **parts)
 
     def latest_tick(self, symbol: str, exchange: str, **parts: str) -> TickSnapshot | None:
         """Return latest tick snapshot (may be stale)."""
-        return self._provider.tick_cache.get(exchange, symbol, **parts)
+        return self._provider.cache.get_tick(exchange, symbol, **parts)
 
     def market_status(self) -> MarketStatusSnapshot:
         """Return current market status."""
@@ -91,8 +117,12 @@ class MarketDataService:
 
     def last_tick_time(self):
         """Return timestamp of last received tick."""
-        return self._provider.tick_cache.last_update
+        return self._provider.cache.live.last_update
 
     def tick_count(self) -> int:
         """Return total ticks received."""
         return self._provider.dispatcher.tick_count
+
+    def cache_snapshot(self) -> dict[str, TickSnapshot]:
+        """Return snapshot of all cached ticks."""
+        return self._provider.cache.snapshot_ticks()

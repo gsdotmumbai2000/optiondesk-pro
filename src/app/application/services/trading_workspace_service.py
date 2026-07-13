@@ -7,7 +7,9 @@ from app.ai.models.request import RecommendationAnalysisRequest
 from app.application.cache.workspace_cache import WorkspaceCache
 from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult, WorkspaceView
+from app.application.ports.market_data_port import MarketDataPort
 from app.application.registry.engine_registry import EngineRegistry
+from app.application.services.market_data_support import MarketDataSupport
 from app.application.session.session_manager import SessionManager
 from app.backtesting.models.request import BacktestRequest
 from app.backtesting.models.result import BacktestResult
@@ -18,7 +20,7 @@ from app.strategy_optimizer.models.request import OptimizationRequest
 from app.strategy_optimizer.models.result import OptimizationResult
 
 
-class TradingWorkspaceService:
+class TradingWorkspaceService(MarketDataSupport):
     """Trading workflow orchestration API for UI."""
 
     def __init__(
@@ -26,8 +28,10 @@ class TradingWorkspaceService:
         engines: EngineRegistry,
         sessions: SessionManager,
         cache: WorkspaceCache,
+        market_data: MarketDataPort | None = None,
     ) -> None:
         """Initialize service."""
+        super().__init__(market_data)
         self._engines = engines
         self._sessions = sessions
         self._cache = cache
@@ -143,4 +147,20 @@ class TradingWorkspaceService:
             summary=f"Active strategy: {entity or 'none'}",
             entity_id=entity,
             updated_at=datetime.now(timezone.utc),
+        )
+
+    def live_quote(
+        self,
+        session_id: str,
+        symbol: str,
+        exchange: str = "NSE",
+    ) -> WorkspaceOperationResult:
+        """Return live quote for trading workspace."""
+        tick = self.latest_tick(symbol, exchange)
+        payload = tick.model_dump(mode="json") if tick is not None else {}
+        return WorkspaceOperationResult(
+            tick is not None,
+            WorkspaceType.TRADING,
+            f"Live quote for {symbol}",
+            payload,
         )

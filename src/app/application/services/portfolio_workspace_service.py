@@ -6,7 +6,9 @@ from decimal import Decimal
 from app.application.cache.workspace_cache import WorkspaceCache
 from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult, WorkspaceView
+from app.application.ports.market_data_port import MarketDataPort
 from app.application.registry.engine_registry import EngineRegistry
+from app.application.services.market_data_support import MarketDataSupport
 from app.application.session.session_manager import SessionManager
 from app.monitor.models.request import MonitorAnalysisRequest
 from app.monitor.models.result import MonitorResult
@@ -15,7 +17,7 @@ from app.portfolio.models.request import PortfolioAnalysisRequest
 from app.portfolio.models.result import PortfolioResult
 
 
-class PortfolioWorkspaceService:
+class PortfolioWorkspaceService(MarketDataSupport):
     """Portfolio management workspace API for UI."""
 
     def __init__(
@@ -23,8 +25,10 @@ class PortfolioWorkspaceService:
         engines: EngineRegistry,
         sessions: SessionManager,
         cache: WorkspaceCache,
+        market_data: MarketDataPort | None = None,
     ) -> None:
         """Initialize service."""
+        super().__init__(market_data)
         self._engines = engines
         self._sessions = sessions
         self._cache = cache
@@ -140,4 +144,39 @@ class PortfolioWorkspaceService:
             summary=f"Portfolio: {entity or 'none'}",
             entity_id=entity,
             updated_at=datetime.now(timezone.utc),
+        )
+
+    def position_market_price(
+        self,
+        session_id: str,
+        symbol: str,
+        exchange: str = "NSE",
+    ) -> WorkspaceOperationResult:
+        """Return live price for a portfolio position."""
+        tick = self.latest_tick(symbol, exchange)
+        payload = tick.model_dump(mode="json") if tick is not None else {}
+        return WorkspaceOperationResult(
+            tick is not None,
+            WorkspaceType.PORTFOLIO,
+            f"Market price for {symbol}",
+            payload,
+        )
+
+    def monitor_live_prices(
+        self,
+        session_id: str,
+        symbols: tuple[str, ...],
+        exchange: str = "NSE",
+    ) -> WorkspaceOperationResult:
+        """Return live prices for position monitor symbols."""
+        prices = {
+            symbol: str(self.latest_price(symbol, exchange) or "")
+            for symbol in symbols
+        }
+        self._cache.put_data(f"{session_id}:monitor:prices", prices)
+        return WorkspaceOperationResult(
+            True,
+            WorkspaceType.PORTFOLIO,
+            f"Live prices for {len(symbols)} symbols",
+            prices,
         )

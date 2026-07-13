@@ -8,11 +8,13 @@ from app.ai.models.result import RecommendationResult
 from app.application.cache.workspace_cache import WorkspaceCache
 from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult, WorkspaceView
+from app.application.ports.market_data_port import MarketDataPort
 from app.application.registry.engine_registry import EngineRegistry
+from app.application.services.market_data_support import MarketDataSupport
 from app.application.session.session_manager import SessionManager
 
 
-class AIWorkspaceService:
+class AIWorkspaceService(MarketDataSupport):
     """AI recommendation workspace API for UI."""
 
     def __init__(
@@ -20,8 +22,10 @@ class AIWorkspaceService:
         engines: EngineRegistry,
         sessions: SessionManager,
         cache: WorkspaceCache,
+        market_data: MarketDataPort | None = None,
     ) -> None:
         """Initialize service."""
+        super().__init__(market_data)
         self._engines = engines
         self._sessions = sessions
         self._cache = cache
@@ -93,4 +97,19 @@ class AIWorkspaceService:
             summary=f"{len(memory.recent)} recent recommendations",
             entity_id="",
             updated_at=datetime.now(timezone.utc),
+        )
+
+    def market_context_price(
+        self,
+        session_id: str,
+        symbol: str,
+        exchange: str = "NSE",
+    ) -> WorkspaceOperationResult:
+        """Return live price for AI recommendation context."""
+        price = self.latest_price(symbol, exchange)
+        return WorkspaceOperationResult(
+            price is not None,
+            WorkspaceType.AI,
+            f"Context price for {symbol}",
+            {"symbol": symbol, "exchange": exchange, "price": str(price or "")},
         )

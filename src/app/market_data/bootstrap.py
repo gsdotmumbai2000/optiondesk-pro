@@ -4,12 +4,13 @@ from pathlib import Path
 
 from app.brokers.broker_interface.interface import BrokerInterface
 from app.events.event_bus import EventBus
-from app.market_data.live.live_provider import LiveMarketDataProvider
+from app.market_data.engine.live_engine import LiveMarketDataEngine
+from app.market_data.services.bundle import MarketDataServiceBundle
 from app.market_data.services.market_data_service import MarketDataService
 
 
 class MarketDataProvider:
-    """Factory for live market data engine."""
+    """Factory for enterprise live market data engine."""
 
     def __init__(
         self,
@@ -18,14 +19,15 @@ class MarketDataProvider:
         event_bus: EventBus | None = None,
     ) -> None:
         """Initialize provider."""
-        self._live = LiveMarketDataProvider(broker, data_directory, event_bus)
-        self.engine = self._live.engine
-        self.service: MarketDataService = self._live.service
+        self._engine = LiveMarketDataEngine(broker, data_directory, event_bus)
+        self.engine = self._engine.provider.engine
+        self.service: MarketDataService = self._engine.bundle.market_data
+        self.bundle: MarketDataServiceBundle = self._engine.bundle
 
     def start(self) -> None:
         """Start market data engine."""
-        self._live.start()
+        self._engine.start()
 
     def stop(self) -> None:
         """Stop market data engine."""
-        self._live.stop()
+        self._engine.stop()
