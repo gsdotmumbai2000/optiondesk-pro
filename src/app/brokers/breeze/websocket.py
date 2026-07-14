@@ -1,13 +1,21 @@
 """Breeze websocket manager."""
 
+import traceback
 from threading import RLock
 from typing import Any, Callable
 
 from app.brokers.breeze.client_port import BreezeClientPort
+from app.brokers.breeze.feed_subscription import (
+    build_subscribe_feed_kwargs,
+    build_unsubscribe_feed_kwargs,
+)
 from app.brokers.breeze.normalizers.quote_normalizer import normalize_quote
 from app.brokers.events import OptionChainUpdatedEvent, QuoteUpdatedEvent
 from app.brokers.shared.models import OptionChainRequest, QuoteSubscription
 from app.events.event_bus import EventBus
+from app.logging.logging_manager import get_logger
+
+logger = get_logger(__name__)
 
 
 class BreezeWebSocket:
@@ -47,35 +55,55 @@ class BreezeWebSocket:
     def subscribe_quotes(self, subscription: QuoteSubscription) -> None:
         """Subscribe to quote feed."""
         with self._lock:
-            self._client.subscribe_feeds(
-                exchange_code=subscription.exchange.lower(),
-                stock_code=subscription.symbol,
-                product_type=subscription.product_type.value.lower(),
-                expiry_date=subscription.expiry_date,
-                strike_price=subscription.strike_price,
-                right=subscription.option_right.lower(),
-                interval=subscription.interval,
-                get_exchange_quotes=True,
-                get_market_depth=subscription.mode.value == "DEPTH",
+            kwargs = build_subscribe_feed_kwargs(subscription)
+            symbol = subscription.symbol
+            logger.info(
+                "Calling subscribe_feeds with arguments: {kwargs}",
+                kwargs=kwargs,
             )
-            self._quote_subscriptions.append(subscription)
+            try:
+                result = self._client.subscribe_feeds(**kwargs)
+                self._raise_if_feed_call_failed(result)
+            except Exception as error:
+                logger.error(
+                    "Subscription failed: {symbol} - {error}\n{traceback}",
+                    symbol=symbol,
+                    error=error,
+                    traceback=traceback.format_exc(),
+                )
+                raise
+            logger.info(
+                "Subscription added: {symbol}@{exchange}",
+                symbol=symbol,
+                exchange=subscription.exchange,
+            )
+            if subscription not in self._quote_subscriptions:
+                self._quote_subscriptions.append(subscription)
 
     def unsubscribe_quotes(self, subscription: QuoteSubscription) -> None:
         """Unsubscribe from quote feed."""
         with self._lock:
-            self._client.unsubscribe_feeds(
-                exchange_code=subscription.exchange.lower(),
-                stock_code=subscription.symbol,
-                product_type=subscription.product_type.value.lower(),
-                expiry_date=subscription.expiry_date,
-                strike_price=subscription.strike_price,
-                right=subscription.option_right.lower(),
-                interval=subscription.interval,
+            kwargs = build_unsubscribe_feed_kwargs(subscription)
+            symbol = subscription.symbol
+            logger.info(
+                "Calling unsubscribe_feeds with arguments: {kwargs}",
+                kwargs=kwargs,
             )
+            try:
+                result = self._client.unsubscribe_feeds(**kwargs)
+                self._raise_if_feed_call_failed(result)
+            except Exception as error:
+                logger.error(
+                    "Unsubscribe failed: {symbol} - {error}\n{traceback}",
+                    symbol=symbol,
+                    error=error,
+                    traceback=traceback.format_exc(),
+                )
+                raise
             self._quote_subscriptions = [
                 item
                 for item in self._quote_subscriptions
-                if item.symbol != subscription.symbol
+                if item != subscription
             ]
 
     def subscribe_option_chain(self, request: OptionChainRequest) -> None:
@@ -117,3 +145,9 @@ class BreezeWebSocket:
         """Attach SDK quote callback if supported."""
         if hasattr(self._client, "on_ticks"):
             setattr(self._client, "on_ticks", handler)
+
+    @staticmethod
+    def _raise_if_feed_call_failed(result: Any) -> None:
+        """Raise when Breeze SDK returns an error string instead of a dict."""
+        if isinstance(result, str):
+            raise RuntimeError(result)
