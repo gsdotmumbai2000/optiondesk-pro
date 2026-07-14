@@ -57,8 +57,11 @@ class BreezeWebSocket:
         with self._lock:
             kwargs = build_subscribe_feed_kwargs(subscription)
             symbol = subscription.symbol
+            exchange = subscription.exchange
             logger.info(
-                "Calling subscribe_feeds with arguments: {kwargs}",
+                "Subscribing {symbol}@{exchange} with kwargs: {kwargs}",
+                symbol=symbol,
+                exchange=exchange,
                 kwargs=kwargs,
             )
             try:
@@ -66,16 +69,18 @@ class BreezeWebSocket:
                 self._raise_if_feed_call_failed(result)
             except Exception as error:
                 logger.error(
-                    "Subscription failed: {symbol} - {error}\n{traceback}",
+                    "Subscription failed: {symbol}@{exchange} kwargs={kwargs} error={error}\n{traceback}",
                     symbol=symbol,
+                    exchange=exchange,
+                    kwargs=kwargs,
                     error=error,
                     traceback=traceback.format_exc(),
                 )
                 raise
             logger.info(
-                "Subscription added: {symbol}@{exchange}",
+                "Subscription successful: {symbol}@{exchange}",
                 symbol=symbol,
-                exchange=subscription.exchange,
+                exchange=exchange,
             )
             if subscription not in self._quote_subscriptions:
                 self._quote_subscriptions.append(subscription)
@@ -85,8 +90,11 @@ class BreezeWebSocket:
         with self._lock:
             kwargs = build_unsubscribe_feed_kwargs(subscription)
             symbol = subscription.symbol
+            exchange = subscription.exchange
             logger.info(
-                "Calling unsubscribe_feeds with arguments: {kwargs}",
+                "Unsubscribing {symbol}@{exchange} with kwargs: {kwargs}",
+                symbol=symbol,
+                exchange=exchange,
                 kwargs=kwargs,
             )
             try:
@@ -94,8 +102,10 @@ class BreezeWebSocket:
                 self._raise_if_feed_call_failed(result)
             except Exception as error:
                 logger.error(
-                    "Unsubscribe failed: {symbol} - {error}\n{traceback}",
+                    "Unsubscribe failed: {symbol}@{exchange} kwargs={kwargs} error={error}\n{traceback}",
                     symbol=symbol,
+                    exchange=exchange,
+                    kwargs=kwargs,
                     error=error,
                     traceback=traceback.format_exc(),
                 )

@@ -104,3 +104,15 @@ def test_unsubscribe_matches_subscribe() -> None:
     """Unsubscribe kwargs should mirror subscribe identity fields."""
     subscription = QuoteSubscription(symbol="RELIANCE", exchange="NSE")
     assert build_unsubscribe_feed_kwargs(subscription) == build_subscribe_feed_kwargs(subscription)
+
+
+def test_all_index_symbols_omit_derivative_fields() -> None:
+    """Default index symbols should never include derivative-only fields."""
+    for symbol in ("NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"):
+        subscription = QuoteSubscription(symbol=symbol, exchange="NSE", product_type=ProductType.CASH)
+        kwargs = build_subscribe_feed_kwargs(subscription)
+        assert kwargs["stock_code"] == symbol
+        assert kwargs["product_type"] == "cash"
+        assert "expiry_date" not in kwargs
+        assert "strike_price" not in kwargs
+        assert "right" not in kwargs
