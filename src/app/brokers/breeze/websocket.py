@@ -31,8 +31,11 @@ class BreezeWebSocket:
         self._event_bus = event_bus
         self._lock = RLock()
         self._connected = False
+        self._pending_ws_connect = False
         self._quote_subscriptions: list[QuoteSubscription] = []
         self._chain_subscriptions: list[OptionChainRequest] = []
+        self._user_quote_handler: Callable[[Any], None] | None = None
+        self._install_sdk_callback()
 
     @property
     def is_connected(self) -> bool:
@@ -41,20 +44,23 @@ class BreezeWebSocket:
             return self._connected
 
     def connect(self) -> None:
-        """Connect websocket feed."""
+        """Connect websocket feed after quote callback is registered."""
         with self._lock:
-            self._client.ws_connect()
-            self._connected = True
+            self._pending_ws_connect = True
+            self._try_ws_connect()
 
     def disconnect(self) -> None:
         """Disconnect websocket feed."""
         with self._lock:
             self._client.ws_disconnect()
             self._connected = False
+            self._pending_ws_connect = False
 
     def subscribe_quotes(self, subscription: QuoteSubscription) -> None:
         """Subscribe to quote feed."""
         with self._lock:
+            self._install_sdk_callback()
+            self._try_ws_connect()
             kwargs = build_subscribe_feed_kwargs(subscription)
             symbol = subscription.symbol
             exchange = subscription.exchange
@@ -152,9 +158,50 @@ class BreezeWebSocket:
         self._event_bus.publish(OptionChainUpdatedEvent(payload=chain_payload))
 
     def set_quote_handler(self, handler: Callable[[Any], None]) -> None:
-        """Attach SDK quote callback if supported."""
-        if hasattr(self._client, "on_ticks"):
-            setattr(self._client, "on_ticks", handler)
+        """Register application quote handler and connect websocket if pending."""
+        with self._lock:
+            self._user_quote_handler = handler
+            self._install_sdk_callback()
+            self._try_ws_connect()
+
+    def _install_sdk_callback(self) -> None:
+        """Bind BreezeConnect.on_ticks to the SDK entry wrapper."""
+        if not hasattr(self._client, "on_ticks"):
+            logger.warning("Breeze client does not expose on_ticks callback property")
+            return
+        current = getattr(self._client, "on_ticks", None)
+        if current is self._on_sdk_ticks:
+            return
+        setattr(self._client, "on_ticks", self._on_sdk_ticks)
+        logger.info("Breeze on_ticks callback registered on SDK client")
+
+    def _on_sdk_ticks(self, data: Any) -> None:
+        """SDK entry point invoked by BreezeConnect SocketEventBreeze.on_message."""
+        logger.info("RAW SDK CALLBACK RECEIVED")
+        handler = self._user_quote_handler
+        if handler is None:
+            logger.warning("RAW SDK CALLBACK RECEIVED but no quote handler is registered")
+            return
+        try:
+            handler(data)
+        except Exception as error:
+            logger.error(
+                "Quote handler failed: {error}\n{traceback}",
+                error=error,
+                traceback=traceback.format_exc(),
+            )
+
+    def _try_ws_connect(self) -> None:
+        """Open websocket only after the SDK callback and user handler are ready."""
+        if self._connected or not self._pending_ws_connect:
+            return
+        if self._user_quote_handler is None:
+            logger.debug("Deferring Breeze ws_connect until quote handler is registered")
+            return
+        self._install_sdk_callback()
+        self._client.ws_connect()
+        self._connected = True
+        logger.info("Breeze websocket connected")
 
     @staticmethod
     def _raise_if_feed_call_failed(result: Any) -> None:
