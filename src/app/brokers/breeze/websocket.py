@@ -65,24 +65,12 @@ class BreezeWebSocket:
             symbol = subscription.symbol
             exchange = subscription.exchange
             logger.info(
-                "Subscribing {symbol}@{exchange} with kwargs: {kwargs}",
+                "Subscribing {symbol}@{exchange}",
                 symbol=symbol,
                 exchange=exchange,
-                kwargs=kwargs,
             )
-            try:
-                result = self._client.subscribe_feeds(**kwargs)
-                self._raise_if_feed_call_failed(result)
-            except Exception as error:
-                logger.error(
-                    "Subscription failed: {symbol}@{exchange} kwargs={kwargs} error={error}\n{traceback}",
-                    symbol=symbol,
-                    exchange=exchange,
-                    kwargs=kwargs,
-                    error=error,
-                    traceback=traceback.format_exc(),
-                )
-                raise
+            result = self._call_subscribe_feeds(kwargs)
+            self._raise_if_feed_call_failed(result)
             logger.info(
                 "Subscription successful: {symbol}@{exchange}",
                 symbol=symbol,
@@ -202,6 +190,20 @@ class BreezeWebSocket:
         self._client.ws_connect()
         self._connected = True
         logger.info("Breeze websocket connected")
+
+    def _call_subscribe_feeds(self, kwargs: dict[str, Any]) -> Any:
+        """Call Breeze subscribe_feeds with diagnostic logging."""
+        logger.info("subscribe_feeds kwargs: {kwargs}", kwargs=kwargs)
+        try:
+            return self._client.subscribe_feeds(**kwargs)
+        except Exception as error:
+            logger.error(
+                "subscribe_feeds failed: exception_type={exception_type} kwargs={kwargs}\n{traceback}",
+                exception_type=type(error).__name__,
+                kwargs=kwargs,
+                traceback=traceback.format_exc(),
+            )
+            raise
 
     @staticmethod
     def _raise_if_feed_call_failed(result: Any) -> None:
