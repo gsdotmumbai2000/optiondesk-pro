@@ -193,14 +193,24 @@ class BreezeWebSocket:
 
     def _call_subscribe_feeds(self, kwargs: dict[str, Any]) -> Any:
         """Call Breeze subscribe_feeds with diagnostic logging."""
+
         logger.info("subscribe_feeds kwargs: {kwargs}", kwargs=kwargs)
+
+        sdk_kwargs = dict(kwargs)
+
+        exchange_code = sdk_kwargs.get("exchange_code")
+        if isinstance(exchange_code, str):
+            sdk_kwargs["exchange_code"] = exchange_code.upper()
+
+        logger.info("subscribe_feeds sdk_kwargs: {kwargs}", kwargs=sdk_kwargs)
+
         try:
-            return self._client.subscribe_feeds(**kwargs)
+            return self._client.subscribe_feeds(**sdk_kwargs)
         except Exception as error:
             logger.error(
                 "subscribe_feeds failed: exception_type={exception_type} kwargs={kwargs}\n{traceback}",
                 exception_type=type(error).__name__,
-                kwargs=kwargs,
+                kwargs=sdk_kwargs,
                 traceback=traceback.format_exc(),
             )
             raise
