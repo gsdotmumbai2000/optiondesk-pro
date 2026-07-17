@@ -10,6 +10,9 @@ def create_breeze_client(api_key: str) -> BreezeClientPort:
     """Create a BreezeConnect client without importing at module load."""
     from breeze_connect import BreezeConnect
 
+    from app.brokers.breeze.sdk_diagnostics import apply_breeze_sdk_diagnostics
+
+    apply_breeze_sdk_diagnostics()
     return cast(BreezeClientPort, BreezeConnect(api_key=api_key))
 
 
