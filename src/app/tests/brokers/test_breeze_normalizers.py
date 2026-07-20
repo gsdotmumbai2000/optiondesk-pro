@@ -1,5 +1,6 @@
 """Breeze normalizer and utility tests."""
 
+from datetime import timezone
 from decimal import Decimal
 
 import pytest
@@ -26,6 +27,8 @@ def test_quote_normalizer() -> None:
         [{"ltp": "24500", "open": "24400", "high": "24600", "low": "24350"}],
     )
     assert quote.ltp == Decimal("24500")
+    assert quote.timestamp is not None
+    assert quote.timestamp.tzinfo == timezone.utc
 
 
 def test_order_normalizer() -> None:
