@@ -59,7 +59,7 @@ class BrokerViewModel(BaseViewModel):
     def set_error(self, message: str) -> None:
         """Set and emit last error."""
         self._last_error = message
-        self.set_error(message)
+        super().set_error(message)
 
     def login(self, session_token: str) -> None:
         """Login with session token."""
