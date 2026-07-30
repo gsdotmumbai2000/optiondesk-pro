@@ -18,7 +18,7 @@ from app.plugins.plugin_manager import PluginManager
 from app.repositories.repository_factory import RepositoryFactory
 from app.scheduler.scheduler_manager import SchedulerManager
 from app.security.credential_manager import CredentialManager
-from app.utils.constants import LOG_DIR_NAME
+from app.utils.runtime_paths import application_log_directory
 
 
 def _data_directory(configuration_manager: ConfigurationManager) -> Path:
@@ -27,9 +27,9 @@ def _data_directory(configuration_manager: ConfigurationManager) -> Path:
 
 
 def _log_directory(configuration_manager: ConfigurationManager) -> Path:
-    """Resolve the log directory from configuration."""
-    data_dir = configuration_manager.configuration.application.data_directory
-    return Path(data_dir) / LOG_DIR_NAME
+    """Resolve the log directory from the application root."""
+    _ = configuration_manager
+    return application_log_directory()
 
 
 def _workspace_directory(configuration_manager: ConfigurationManager) -> Path:

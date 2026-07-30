@@ -21,3 +21,8 @@ def bundle_root() -> Path:
     if is_frozen():
         return Path(getattr(sys, "_MEIPASS", application_root()))
     return application_root()
+
+
+def application_log_directory() -> Path:
+    """Return the application log directory at the project/install root."""
+    return application_root() / "logs"

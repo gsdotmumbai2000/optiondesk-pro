@@ -30,7 +30,7 @@ from app.services.broker.bootstrap import (build_broker_bundle,
 from app.services.broker.connection_status_service import ConnectionStatusService
 from app.services.service_keys import ServiceKeys
 from app.ui.application.desktop_app import DesktopApplication
-from app.utils.constants import LOG_DIR_NAME
+from app.utils.runtime_paths import application_log_directory
 from app.utils.file_helper import FileHelper
 from app.utils.thread_helper import ThreadHelper
 
@@ -184,10 +184,7 @@ class ApplicationKernel:
     def _bootstrap_logging(self) -> None:
         """Initialize logging."""
         assert self.configuration_manager is not None
-        log_dir = (
-            Path(self.configuration_manager.configuration.application.data_directory)
-            / LOG_DIR_NAME
-        )
+        log_dir = application_log_directory()
         FileHelper.ensure_directory(log_dir)
         self.logging_manager = self._container.logging_manager()
         self.logging_manager.initialize()
