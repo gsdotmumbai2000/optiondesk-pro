@@ -1,8 +1,11 @@
 """Tests for Breeze feed subscription argument builder."""
 
+import pytest
+
 from app.brokers.breeze.feed_subscription import (
     build_subscribe_feed_kwargs,
     build_unsubscribe_feed_kwargs,
+    resolve_breeze_stock_code,
 )
 from app.brokers.shared.enums import ProductType, QuoteSubscriptionMode
 from app.brokers.shared.models import QuoteSubscription
@@ -111,8 +114,59 @@ def test_all_index_symbols_omit_derivative_fields() -> None:
     for symbol in ("NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"):
         subscription = QuoteSubscription(symbol=symbol, exchange="NSE", product_type=ProductType.CASH)
         kwargs = build_subscribe_feed_kwargs(subscription)
-        assert kwargs["stock_code"] == symbol
         assert kwargs["product_type"] == "cash"
         assert "expiry_date" not in kwargs
         assert "strike_price" not in kwargs
         assert "right" not in kwargs
+
+
+@pytest.mark.parametrize(
+    ("symbol", "breeze_stock_code"),
+    [
+        ("NIFTY", "NIFTY"),
+        ("BANKNIFTY", "CNXBAN"),
+        ("FINNIFTY", "NIFFIN"),
+        ("MIDCPNIFTY", "NIFSEL"),
+    ],
+)
+def test_nse_index_stock_code_is_mapped_to_breeze_scrip_code(
+    symbol: str, breeze_stock_code: str
+) -> None:
+    """NSE cash-segment subscribe_feeds calls must use Breeze's own scrip-master
+    codes for these indices; Breeze's NSE dictionary does not contain
+    "BANKNIFTY"/"FINNIFTY"/"MIDCPNIFTY" as literal keys (confirmed against the
+    live NSEScripMaster.txt security master)."""
+    subscription = QuoteSubscription(symbol=symbol, exchange="NSE", product_type=ProductType.CASH)
+    kwargs = build_subscribe_feed_kwargs(subscription)
+    assert kwargs["stock_code"] == breeze_stock_code
+
+
+def test_nse_index_stock_code_mapping_applies_to_unsubscribe_too() -> None:
+    """Subscribe and unsubscribe must use the same Breeze broker identifier."""
+    subscription = QuoteSubscription(symbol="BANKNIFTY", exchange="NSE", product_type=ProductType.CASH)
+    subscribe_kwargs = build_subscribe_feed_kwargs(subscription)
+    unsubscribe_kwargs = build_unsubscribe_feed_kwargs(subscription)
+    assert subscribe_kwargs["stock_code"] == "CNXBAN"
+    assert unsubscribe_kwargs["stock_code"] == "CNXBAN"
+
+
+def test_index_stock_code_mapping_does_not_apply_outside_nse() -> None:
+    """NFO contract names use the canonical index name as their underlying;
+    the NSE cash-segment scrip-code mapping must not rewrite it."""
+    subscription = QuoteSubscription(
+        symbol="BANKNIFTY",
+        exchange="NFO",
+        product_type=ProductType.OPTIONS,
+        expiry_date="30-Jun-2026",
+        strike_price="50000",
+        option_right="CALL",
+    )
+    kwargs = build_subscribe_feed_kwargs(subscription)
+    assert kwargs["stock_code"] == "BANKNIFTY"
+
+
+def test_resolve_breeze_stock_code_is_case_insensitive_and_leaves_unknown_symbols() -> None:
+    """The resolver should only rewrite known NSE index aliases."""
+    assert resolve_breeze_stock_code("banknifty", "nse") == "CNXBAN"
+    assert resolve_breeze_stock_code("RELIANCE", "nse") == "RELIANCE"
+    assert resolve_breeze_stock_code("BANKNIFTY", "bse") == "BANKNIFTY"

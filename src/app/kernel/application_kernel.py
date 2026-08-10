@@ -287,6 +287,7 @@ class ApplicationKernel:
             self.broker_provider.broker,
             data_dir,
             self.event_bus,
+            instrument_service=self.market_master_provider.instrument_service,
         )
         self.market_data_provider.start()
 

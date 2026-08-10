@@ -12,6 +12,7 @@ from app.market_data.diagnostics import log_tick_diagnostic
 from app.market_data.dispatcher.event_dispatcher import EventDispatcher
 from app.market_data.models.quote import OHLC
 from app.market_data.models.tick import TickSnapshot
+from app.market_data.symbols import InstrumentMasterSymbolCanonicalizer, SymbolCanonicalizer
 from app.market_data.websocket.enums import LiveConnectionStatus
 
 logger = get_logger(__name__)
@@ -25,11 +26,15 @@ class WebSocketService:
         broker: BrokerInterface,
         dispatcher: EventDispatcher,
         event_bus: EventBus | None = None,
+        symbol_canonicalizer: SymbolCanonicalizer | None = None,
     ) -> None:
         """Initialize websocket service."""
         self._broker = broker
         self._dispatcher = dispatcher
         self._event_bus = event_bus
+        self._symbol_canonicalizer = (
+            symbol_canonicalizer or InstrumentMasterSymbolCanonicalizer()
+        )
         self._lock = RLock()
         self._status = LiveConnectionStatus.DISCONNECTED
         self._last_message: datetime | None = None
@@ -93,8 +98,14 @@ class WebSocketService:
         if not symbol:
             return
         broker_quote = breeze_quote(symbol, exchange, item)
+        canonical = self._symbol_canonicalizer.canonicalize(
+            broker_quote.symbol,
+            exchange=broker_quote.exchange,
+            broker_code=self._broker.broker_code.value,
+        )
         tick = TickSnapshot(
-            symbol=broker_quote.symbol,
+            symbol=canonical.symbol,
+            broker_symbol=canonical.broker_symbol,
             exchange=broker_quote.exchange,
             ltp=broker_quote.ltp,
             ohlc=OHLC(

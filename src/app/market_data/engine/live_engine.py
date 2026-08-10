@@ -16,9 +16,15 @@ class LiveMarketDataEngine:
         broker: BrokerInterface,
         data_directory: Path,
         event_bus: EventBus | None = None,
+        instrument_service: object | None = None,
     ) -> None:
         """Initialize engine."""
-        self._provider = LiveMarketDataProvider(broker, data_directory, event_bus)
+        self._provider = LiveMarketDataProvider(
+            broker,
+            data_directory,
+            event_bus,
+            instrument_service=instrument_service,
+        )
         self.bundle = MarketDataServiceBundle.from_provider(self._provider)
 
     @property

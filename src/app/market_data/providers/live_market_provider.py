@@ -17,6 +17,7 @@ from app.market_data.services.market_cache_service import MarketCacheService
 from app.market_data.services.market_data_service import MarketDataService
 from app.market_data.services.reconnect_service import ReconnectService
 from app.market_data.subscriptions.subscription_service import SubscriptionService
+from app.market_data.symbols import InstrumentMasterSymbolCanonicalizer
 from app.market_data.websocket.connection_state import ConnectionStateMachine
 from app.market_data.websocket.heartbeat_monitor import HeartbeatMonitor
 from app.market_data.websocket.websocket_service import WebSocketService
@@ -33,6 +34,7 @@ class LiveMarketDataProvider:
         broker: BrokerInterface,
         data_directory: Path,
         event_bus: EventBus | None = None,
+        instrument_service: object | None = None,
     ) -> None:
         """Initialize live market data provider."""
         repository = MarketDataRepository(data_directory / DATABASE_MARKET)
@@ -44,7 +46,12 @@ class LiveMarketDataProvider:
             event_bus,
             can_dispatch=self.connection.can_subscribe,
         )
-        self.websocket = WebSocketService(broker, self.dispatcher, event_bus)
+        self.websocket = WebSocketService(
+            broker,
+            self.dispatcher,
+            event_bus,
+            symbol_canonicalizer=InstrumentMasterSymbolCanonicalizer(instrument_service),
+        )
         self.subscriptions = SubscriptionService(
             broker,
             event_bus,

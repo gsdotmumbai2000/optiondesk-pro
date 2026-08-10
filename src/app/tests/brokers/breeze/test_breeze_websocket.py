@@ -3,10 +3,20 @@
 from typing import Any
 
 import pytest
+from loguru import logger as loguru_logger
 
 from app.brokers.breeze.websocket import BreezeWebSocket
 from app.brokers.shared.enums import ProductType
 from app.brokers.shared.models import QuoteSubscription
+
+
+@pytest.fixture
+def captured_logs():
+    """Capture Loguru output emitted during the test, independent of stdout."""
+    messages: list[str] = []
+    sink_id = loguru_logger.add(lambda message: messages.append(str(message)), level="DEBUG")
+    yield messages
+    loguru_logger.remove(sink_id)
 
 
 class _RecordingClient:
@@ -77,6 +87,33 @@ def test_subscribe_quotes_raises_on_sdk_error_string() -> None:
         websocket.subscribe_quotes(subscription)
 
     assert websocket._quote_subscriptions == []
+
+
+def test_subscribe_quotes_raises_on_invalid_token_error_string(
+    captured_logs: list[str],
+) -> None:
+    """When Breeze's stock_code lookup fails, its own SDK wraps the resulting
+    exception into an error string return (see get_stock_token_value /
+    subscribe_feeds in the vendored SDK). The websocket layer must raise
+    rather than record the subscription as successful, and must never log
+    "Subscription successful" for it."""
+    client = _RecordingClient()
+    client.subscribe_result = (
+        "Exception while subscribing to feeds Breeze returned an invalid "
+        "token for stock_code='BANKNIFTY' exchange_code='NSE': stock_code "
+        "was not found in Breeze's own scrip dictionary "
+        "(tokens=('4.1!False', '4.2!False'))"
+    )
+    websocket = BreezeWebSocket(client)
+    websocket.set_quote_handler(lambda _payload: None)
+    subscription = QuoteSubscription(symbol="BANKNIFTY", exchange="NSE", product_type=ProductType.CASH)
+
+    with pytest.raises(RuntimeError, match="invalid token"):
+        websocket.subscribe_quotes(subscription)
+
+    assert subscription not in websocket._quote_subscriptions
+    log_text = "".join(captured_logs)
+    assert "Subscription successful" not in log_text
 
 
 def test_ws_connect_deferred_until_handler_registered() -> None:

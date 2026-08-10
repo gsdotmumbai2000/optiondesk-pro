@@ -8,6 +8,26 @@ from app.brokers.shared.models import QuoteSubscription
 _INDEX_SYMBOLS = frozenset({"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"})
 _SPOT_EXCHANGES = frozenset({"nse", "bse"})
 
+# Breeze's NSE cash-segment scrip dictionary (stock_script_dict_list[1]) stores
+# these indices under legacy short codes rather than the application's
+# canonical symbol. Confirmed against the live NSEScripMaster.txt security
+# master. This mapping applies only to NSE lookups: NFO/BFO contract names are
+# built from the canonical index name as the underlying and must not be
+# rewritten.
+_NSE_INDEX_STOCK_CODE_MAP: dict[str, str] = {
+    "NIFTY": "NIFTY",
+    "BANKNIFTY": "CNXBAN",
+    "FINNIFTY": "NIFFIN",
+    "MIDCPNIFTY": "NIFSEL",
+}
+
+
+def resolve_breeze_stock_code(symbol: str, exchange_code: str) -> str:
+    """Map a canonical symbol to Breeze's NSE scrip-master stock_code, if applicable."""
+    if exchange_code != "nse":
+        return symbol
+    return _NSE_INDEX_STOCK_CODE_MAP.get(symbol.strip().upper(), symbol)
+
 
 def _clean_str(value: str | None) -> str | None:
     if value is None:
@@ -42,7 +62,7 @@ def build_subscribe_feed_kwargs(subscription: QuoteSubscription) -> dict[str, An
 
     kwargs: dict[str, Any] = {
         "exchange_code": exchange,
-        "stock_code": symbol,
+        "stock_code": resolve_breeze_stock_code(symbol, exchange),
         "get_exchange_quotes": True,
         "get_market_depth": subscription.mode.value == "DEPTH",
     }

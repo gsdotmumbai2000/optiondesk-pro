@@ -61,7 +61,7 @@ class BreezeWebSocket:
         with self._lock:
             self._install_sdk_callback()
             self._try_ws_connect()
-            kwargs = build_subs.vecribe_feed_kwargs(subscription)
+            kwargs = build_subscribe_feed_kwargs(subscription)
             symbol = subscription.symbol
             exchange = subscription.exchange
             logger.info(

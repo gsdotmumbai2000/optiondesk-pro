@@ -174,6 +174,7 @@ src/app/brokers/breeze/historical.py
 src/app/brokers/breeze/market_data.py
 src/app/brokers/breeze/option_chain.py
 src/app/brokers/breeze/portfolio.py
+src/app/brokers/breeze/sdk_diagnostics.py
 src/app/brokers/breeze/session_manager.py
 src/app/brokers/breeze/session_store.py
 src/app/brokers/breeze/trading.py
@@ -489,6 +490,8 @@ src/app/market_data/subscribers/subscriber_registry.py
 src/app/market_data/subscriptions/__init__.py
 src/app/market_data/subscriptions/models.py
 src/app/market_data/subscriptions/subscription_service.py
+src/app/market_data/symbols/__init__.py
+src/app/market_data/symbols/canonicalizer.py
 src/app/market_data/validation/exceptions.py
 src/app/market_data/validation/subscription_validator.py
 src/app/market_data/validation/validators.py
@@ -919,6 +922,7 @@ src/app/tests/brokers/breeze/test_breeze_authentication_service.py
 src/app/tests/brokers/breeze/test_breeze_broker_adapter.py
 src/app/tests/brokers/breeze/test_breeze_configuration_provider.py
 src/app/tests/brokers/breeze/test_breeze_feed_subscription.py
+src/app/tests/brokers/breeze/test_breeze_sdk_diagnostics.py
 src/app/tests/brokers/breeze/test_breeze_websocket.py
 src/app/tests/calculation/__init__.py
 src/app/tests/calculation/test_calculation_engine.py
@@ -949,6 +953,7 @@ src/app/tests/market_data/conftest.py
 src/app/tests/market_data/test_market_data_engine.py
 src/app/tests/market_data/test_repository_and_normalizers.py
 src/app/tests/market_data/test_stress.py
+src/app/tests/market_data/test_symbol_canonicalizer.py
 src/app/tests/market_data/enterprise/__init__.py
 src/app/tests/market_data/enterprise/test_connection_lifecycle.py
 src/app/tests/market_data/enterprise/test_enterprise_market_data.py

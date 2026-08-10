@@ -23,6 +23,33 @@ class InstrumentService:
         """Find instruments by trading symbol."""
         return self._cache.find_by_symbol(trading_symbol)
 
+    def find_by_display_name(self, display_name: str) -> list[Instrument]:
+        """Find instruments by their canonical display name."""
+        value = display_name.casefold().strip()
+        return [
+            instrument
+            for instrument in self._cache.get_instruments()
+            if instrument.display_name.casefold().strip() == value
+        ]
+
+    def find_by_broker_symbol(
+        self, broker_code: str, broker_symbol: str
+    ) -> list[Instrument]:
+        """Find instruments by a broker-specific identifier stored in the master."""
+        broker = broker_code.casefold().strip()
+        value = broker_symbol.casefold().strip()
+        return [
+            instrument
+            for instrument in self._cache.get_instruments()
+            if str(instrument.broker_symbols.get(broker_code, "")).casefold().strip()
+            == value
+            or any(
+                key.casefold().strip() == broker
+                and value == str(alias).casefold().strip()
+                for key, alias in instrument.broker_symbols.items()
+            )
+        ]
+
     def find_by_exchange(self, exchange: str) -> list[Instrument]:
         """Find instruments by exchange."""
         return self._cache.find_by_exchange(exchange)

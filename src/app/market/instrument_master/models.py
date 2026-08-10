@@ -60,6 +60,7 @@ class Instrument(BaseModel):
     expiry_date: date | None = None
     strike_price: Decimal | None = None
     option_right: str | None = None
+    broker_symbols: dict[str, str] = Field(default_factory=dict)
 
     def canonical_key(self) -> str:
         """Return the canonical instrument key."""

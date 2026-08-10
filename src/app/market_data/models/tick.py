@@ -12,6 +12,7 @@ class TickSnapshot(BaseModel):
     """Latest tick snapshot for a subscribed instrument."""
 
     symbol: str
+    broker_symbol: str = ""
     exchange: str
     ltp: Decimal | None = None
     ohlc: OHLC = Field(default_factory=OHLC)

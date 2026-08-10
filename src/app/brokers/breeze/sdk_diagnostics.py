@@ -13,6 +13,22 @@ logger = get_logger(__name__)
 _PATCHED = False
 
 
+class BreezeInvalidStockCodeError(RuntimeError):
+    """Raised when Breeze's own SDK resolves a stock_code to an invalid token."""
+
+
+def _token_is_invalid(token: Any) -> bool:
+    """Detect Breeze's "<exchange>.<mode>!False" token produced for an unknown stock_code.
+
+    get_stock_token_value() looks up stock_code in its NSE dictionary via
+    ``dict.get(stock_code, False)``. When the code is absent it should raise,
+    but its subscribe_exception() only builds an Exception object and never
+    raises or returns it, so execution falls through and stringifies the
+    missing token (Python False) directly into the channel string.
+    """
+    return isinstance(token, str) and token.rsplit("!", maxsplit=1)[-1] == "False"
+
+
 def apply_breeze_sdk_diagnostics() -> None:
     """Instrument BreezeConnect.get_stock_token_value for subscription debugging."""
     global _PATCHED
@@ -74,6 +90,14 @@ def apply_breeze_sdk_diagnostics() -> None:
             print("===================================================\n")
             raise result
 
+        if isinstance(result, tuple) and any(_token_is_invalid(token) for token in result):
+            raise BreezeInvalidStockCodeError(
+                "Breeze returned an invalid token for "
+                f"stock_code={stock_code!r} exchange_code={exchange_code!r}: "
+                "stock_code was not found in Breeze's own scrip dictionary "
+                f"(tokens={result!r})"
+            )
+
         return result
 
     BreezeConnect.get_stock_token_value = instrumented_get_stock_token_value  # type: ignore[method-assign]
@@ -117,22 +141,32 @@ def _print_lookup_state(client: Any, stock_code: str) -> None:
         hasattr(client, "stock_script_dict_list")
         and client.stock_script_dict_list is not None
     )
-    print(f"stock_script_dict_list exists: {stock_script_dict_list_exists}")
+    logger.info(
+        "stock_script_dict_list exists: {exists}",
+        exists=stock_script_dict_list_exists,
+    )
     if not stock_script_dict_list_exists:
         return
 
-    print(f"stock_script_dict_list length: {len(client.stock_script_dict_list)}")
+    logger.info(
+        "stock_script_dict_list length: {length}",
+        length=len(client.stock_script_dict_list),
+    )
     nse_dictionary = (
         client.stock_script_dict_list[1]
         if len(client.stock_script_dict_list) > 1
         else {}
     )
-    print(f"NSE dictionary entries: {len(nse_dictionary)}")
+    logger.info("NSE dictionary entries: {count}", count=len(nse_dictionary))
     stock_code_exists = bool(stock_code) and stock_code in nse_dictionary
-    print(f"requested stock_code exists in NSE dictionary: {stock_code_exists}")
+    logger.info(
+        "requested stock_code exists in NSE dictionary: stock_code={stock_code} exists={exists}",
+        stock_code=stock_code,
+        exists=stock_code_exists,
+    )
     if stock_code and not stock_code_exists:
-        print("first 50 available NSE keys:")
-        print(list(nse_dictionary.keys())[:50])
+        logger.debug("first 50 available NSE keys:")
+        logger.debug("{keys}", keys=list(nse_dictionary.keys())[:50])
 
 
 def _print_sdk_exception() -> None:

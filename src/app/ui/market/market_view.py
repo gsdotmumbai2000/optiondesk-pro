@@ -3,6 +3,7 @@
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
+from app.logging.logging_manager import get_logger
 from app.ui.charts import price_chart, volatility_chart
 from app.ui.option_chain.option_chain_view import OptionChainView
 from app.ui.viewmodels.market_viewmodel import MarketViewModel
@@ -10,6 +11,7 @@ from app.ui.widgets.common import DataTableWidget, SectionHeader
 from app.ui.widgets.live_price_widget import LivePriceWidget
 
 _WATCHLIST_HEADERS = ("Symbol", "LTP", "Change", "Updated")
+logger = get_logger(__name__)
 
 
 class MarketView(QWidget):
@@ -67,6 +69,13 @@ class MarketView(QWidget):
         tick = payload.get("tick", payload)
         self._spot.update_tick(tick)
         symbol = str(tick.get("symbol", ""))
+        logger.debug(
+            "Watchlist tick lookup: incoming_symbol={incoming_symbol!r}, "
+            "available_keys={available_keys!r}, lookup_result={lookup_result!r}",
+            incoming_symbol=symbol,
+            available_keys=list(self._symbol_rows),
+            lookup_result=self._symbol_rows.get(symbol),
+        )
         row = self._symbol_rows.get(symbol)
         if row is None:
             return
