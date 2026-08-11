@@ -13,22 +13,6 @@ logger = get_logger(__name__)
 _PATCHED = False
 
 
-class BreezeInvalidStockCodeError(RuntimeError):
-    """Raised when Breeze's own SDK resolves a stock_code to an invalid token."""
-
-
-def _token_is_invalid(token: Any) -> bool:
-    """Detect Breeze's "<exchange>.<mode>!False" token produced for an unknown stock_code.
-
-    get_stock_token_value() looks up stock_code in its NSE dictionary via
-    ``dict.get(stock_code, False)``. When the code is absent it should raise,
-    but its subscribe_exception() only builds an Exception object and never
-    raises or returns it, so execution falls through and stringifies the
-    missing token (Python False) directly into the channel string.
-    """
-    return isinstance(token, str) and token.rsplit("!", maxsplit=1)[-1] == "False"
-
-
 def apply_breeze_sdk_diagnostics() -> None:
     """Instrument BreezeConnect.get_stock_token_value for subscription debugging."""
     global _PATCHED
@@ -89,14 +73,6 @@ def apply_breeze_sdk_diagnostics() -> None:
             )
             print("===================================================\n")
             raise result
-
-        if isinstance(result, tuple) and any(_token_is_invalid(token) for token in result):
-            raise BreezeInvalidStockCodeError(
-                "Breeze returned an invalid token for "
-                f"stock_code={stock_code!r} exchange_code={exchange_code!r}: "
-                "stock_code was not found in Breeze's own scrip dictionary "
-                f"(tokens={result!r})"
-            )
 
         return result
 

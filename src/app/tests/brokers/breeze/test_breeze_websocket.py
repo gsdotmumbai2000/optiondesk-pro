@@ -54,7 +54,7 @@ def test_subscribe_quotes_passes_clean_equity_kwargs() -> None:
 
     assert len(client.subscribe_calls) == 1
     assert client.subscribe_calls[0] == {
-        "exchange_code": "nse",
+        "exchange_code": "NSE",
         "stock_code": "NIFTY",
         "product_type": "cash",
         "get_exchange_quotes": True,
@@ -114,6 +114,28 @@ def test_subscribe_quotes_raises_on_invalid_token_error_string(
     assert subscription not in websocket._quote_subscriptions
     log_text = "".join(captured_logs)
     assert "Subscription successful" not in log_text
+
+
+def test_unsubscribe_quotes_raises_on_invalid_token_error_string() -> None:
+    """Unsubscribe must be protected symmetrically with subscribe: an invalid
+    Breeze token, once wrapped into an SDK error string, must raise rather
+    than be treated as a successful unsubscribe."""
+    client = _RecordingClient()
+    client.unsubscribe_result = (
+        "Exception while unsubscribing to feeds Breeze returned an invalid "
+        "token for stock_code='CNXBAN' exchange_code='NSE': stock_code "
+        "was not found in Breeze's own scrip dictionary "
+        "(tokens=('4.1!False', '4.2!False'))"
+    )
+    websocket = BreezeWebSocket(client)
+    websocket.set_quote_handler(lambda _payload: None)
+    subscription = QuoteSubscription(symbol="BANKNIFTY", exchange="NSE", product_type=ProductType.CASH)
+    websocket._quote_subscriptions.append(subscription)
+
+    with pytest.raises(RuntimeError, match="invalid token"):
+        websocket.unsubscribe_quotes(subscription)
+
+    assert subscription in websocket._quote_subscriptions
 
 
 def test_ws_connect_deferred_until_handler_registered() -> None:

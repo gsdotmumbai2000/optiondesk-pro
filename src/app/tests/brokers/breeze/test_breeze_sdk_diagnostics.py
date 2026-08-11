@@ -122,56 +122,6 @@ def test_lookup_state_reports_nse_dictionary_membership_per_index(
         assert "NIFTY" in log_text
 
 
-@pytest.mark.parametrize(
-    "fake_result",
-    [
-        ("4.1!False", "4.2!False"),
-        ("4.1!False", False),
-        (False, "4.2!False"),
-    ],
-)
-def test_invalid_token_result_raises_before_returning(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_result: tuple[object, object],
-) -> None:
-    """Breeze's get_stock_token_value stringifies a missing stock_code's token
-    (Python False) into a channel string like "4.1!False" instead of raising.
-    The diagnostics wrapper must detect this and raise before the caller can
-    treat it as a valid subscription."""
-
-    class FakeBreezeConnect:
-        def get_stock_token_value(self, **kwargs: Any) -> tuple[object, object]:
-            return fake_result
-
-    fake_module = ModuleType("breeze_connect.breeze_connect")
-    fake_module.BreezeConnect = FakeBreezeConnect
-    monkeypatch.setitem(sys.modules, "breeze_connect.breeze_connect", fake_module)
-
-    sdk_diagnostics.apply_breeze_sdk_diagnostics()
-
-    client = FakeBreezeConnect()
-    client.stock_script_dict_list = [{}, {"NIFTY": "26000"}]
-
-    with pytest.raises(sdk_diagnostics.BreezeInvalidStockCodeError, match="BANKNIFTY"):
-        client.get_stock_token_value(exchange_code="NSE", stock_code="BANKNIFTY")
-
-
-def test_valid_token_result_is_returned_unchanged(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A genuinely valid token pair must pass through without being flagged."""
-    calls: list[str] = []
-    FakeBreezeConnect = _install_fake_breeze(monkeypatch, calls)
-
-    sdk_diagnostics.apply_breeze_sdk_diagnostics()
-
-    client = FakeBreezeConnect()
-    client.stock_script_dict_list = [{}, {"NIFTY": "26000"}]
-    result = client.get_stock_token_value(exchange_code="NSE", stock_code="NIFTY")
-
-    assert result == ("4.1!123", "4.2!123")
-
-
 def test_apply_breeze_sdk_diagnostics_reraises_returned_exception(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

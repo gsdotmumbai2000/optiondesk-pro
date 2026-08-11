@@ -67,8 +67,9 @@ class MarketView(QWidget):
 
     def _on_tick(self, payload: dict) -> None:
         tick = payload.get("tick", payload)
-        self._spot.update_tick(tick)
         symbol = str(tick.get("symbol", ""))
+        if symbol == "NIFTY":
+            self._spot.update_tick(tick)
         logger.debug(
             "Watchlist tick lookup: incoming_symbol={incoming_symbol!r}, "
             "available_keys={available_keys!r}, lookup_result={lookup_result!r}",

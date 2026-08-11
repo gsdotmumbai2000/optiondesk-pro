@@ -11,8 +11,10 @@ def create_breeze_client(api_key: str) -> BreezeClientPort:
     from breeze_connect import BreezeConnect
 
     from app.brokers.breeze.sdk_diagnostics import apply_breeze_sdk_diagnostics
+    from app.brokers.breeze.token_validation import apply_breeze_token_validation
 
     apply_breeze_sdk_diagnostics()
+    apply_breeze_token_validation()
     return cast(BreezeClientPort, BreezeConnect(api_key=api_key))
 
 
