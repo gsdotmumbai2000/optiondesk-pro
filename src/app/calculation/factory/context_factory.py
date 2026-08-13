@@ -23,7 +23,11 @@ from app.calculation.providers.interest_rate_provider import InterestRateProvide
 from app.calculation.providers.market_status_provider import MarketStatusProvider
 from app.calculation.providers.ports import IInstrumentSpecificationPort, IMarketDataQueryPort
 from app.calculation.providers.time_provider import TimeProvider
-from app.calculation.providers.underlying_provider import UnderlyingInfo, UnderlyingProvider
+from app.calculation.providers.underlying_provider import (
+    UnderlyingInfo,
+    UnderlyingProvider,
+    cash_exchange_for,
+)
 from app.calculation.providers.volatility_provider import VolatilityProvider
 from app.calculation.utilities.normalize_utils import normalize_price
 from app.calculation.utilities.strike_utils import atm_strike
@@ -93,7 +97,7 @@ class CalculationContextFactory:
         now = self._time.now()
         trade_date = self._time.trade_date(now)
         expiry_date = self._expiry.parse_expiry(expiry)
-        spot = self._snapshots.spot(info.underlying_symbol, info.exchange)
+        spot = self._snapshots.spot(info.underlying_symbol, cash_exchange_for(info.exchange))
         future = self._snapshots.future(info.underlying_symbol, info.exchange, expiry)
         chain = self._snapshots.option_chain(info.underlying_symbol, info.exchange, expiry)
         session = self._market_status.session(info.exchange, now)

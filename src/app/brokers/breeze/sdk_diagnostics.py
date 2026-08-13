@@ -74,6 +74,17 @@ def apply_breeze_sdk_diagnostics() -> None:
             print("===================================================\n")
             raise result
 
+        # TEMPORARY DIAGNOSTIC (NIFTY spot-unavailable trace): the exact
+        # exchange-quotes/market-depth token pair the SDK resolved for this
+        # subscription, so the resolved feed token is visible per instrument.
+        logger.info(
+            "get_stock_token_value resolved: stock_code={stock_code} exchange_code={exchange_code} "
+            "resolved_token_pair={result!r}",
+            stock_code=stock_code,
+            exchange_code=exchange_code,
+            result=result,
+        )
+
         return result
 
     BreezeConnect.get_stock_token_value = instrumented_get_stock_token_value  # type: ignore[method-assign]

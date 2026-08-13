@@ -2,7 +2,10 @@
 
 from app.brokers.breeze.client_port import BreezeClientPort
 from app.brokers.shared.exceptions import BrokerAuthenticationException
+from app.logging.logging_manager import get_logger
 from app.security.credential_manager import CredentialManager
+
+logger = get_logger(__name__)
 
 
 class BreezeAuthentication:
@@ -43,7 +46,9 @@ class BreezeAuthentication:
         """Validate current session with customer details API."""
         if not self._session_token:
             return False
+        logger.debug("BEFORE Breeze get_customer_details(...) [session validation]")
         response = self._client.get_customer_details(api_session=self._session_token)
+        logger.debug("AFTER Breeze get_customer_details(...) [session validation]")
         if response.get("Error"):
             return False
         return "Success" in response

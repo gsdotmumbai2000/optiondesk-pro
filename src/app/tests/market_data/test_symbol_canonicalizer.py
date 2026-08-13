@@ -4,7 +4,10 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from app.market_data.symbols import InstrumentMasterSymbolCanonicalizer
+from app.market_data.symbols import (
+    InstrumentMasterSymbolCanonicalizer,
+    build_option_contract_symbol,
+)
 from app.market_data.websocket.websocket_service import WebSocketService
 
 
@@ -154,3 +157,35 @@ class TestIndexDisplayNameCanonicalization:
         canonical = resolver.canonicalize("SOME OTHER STOCK", exchange="NSE")
 
         assert canonical.symbol == "SOME OTHER STOCK"
+
+
+class TestBuildOptionContractSymbol:
+    """Deterministic canonical option contract symbol construction."""
+
+    def test_call_contract_symbol(self) -> None:
+        symbol = build_option_contract_symbol("NIFTY", "13-Feb-2026", "24500", "Call")
+
+        assert symbol == "NIFTY-13-Feb-2026-24500-CE"
+
+    def test_put_contract_symbol(self) -> None:
+        symbol = build_option_contract_symbol("NIFTY", "13-Feb-2026", "24500", "Put")
+
+        assert symbol == "NIFTY-13-Feb-2026-24500-PE"
+
+    def test_ce_pe_broker_right_values_accepted(self) -> None:
+        assert build_option_contract_symbol("NIFTY", "13-Feb-2026", "24500", "CE") == (
+            "NIFTY-13-Feb-2026-24500-CE"
+        )
+        assert build_option_contract_symbol("NIFTY", "13-Feb-2026", "24500", "PE") == (
+            "NIFTY-13-Feb-2026-24500-PE"
+        )
+
+    def test_strike_without_trailing_zero(self) -> None:
+        symbol = build_option_contract_symbol("NIFTY", "13-Feb-2026", "24500.0", "CE")
+
+        assert symbol == "NIFTY-13-Feb-2026-24500-CE"
+
+    def test_fractional_strike_is_preserved(self) -> None:
+        symbol = build_option_contract_symbol("NIFTY", "13-Feb-2026", "24550.5", "PE")
+
+        assert symbol == "NIFTY-13-Feb-2026-24550.5-PE"

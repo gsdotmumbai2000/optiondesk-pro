@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from app.brokers.shared.enums import ProductType
 from app.logging.logging_manager import get_logger
 from app.market_data.diagnostics import log_market_data_diagnostic, log_tick_diagnostic
+from app.market_data.models.option import OptionChain
 from app.market_data.models.tick import TickSnapshot
 from app.market_data.models.live_status import MarketStatusSnapshot
 from app.market_data.websocket.connection_state import MarketDataConnectionState
@@ -71,6 +72,7 @@ class MarketDataService:
         product_type: ProductType = ProductType.CASH,
         expiry_date: str = "",
         strike_price: str = "",
+        option_right: str = "",
     ) -> None:
         """Remove symbol from watchlist."""
         self._provider.subscriptions.unsubscribe(
@@ -79,6 +81,7 @@ class MarketDataService:
             product_type=product_type,
             expiry_date=expiry_date,
             strike_price=strike_price,
+            option_right=option_right,
         )
 
     def bulk_subscribe(
@@ -121,6 +124,23 @@ class MarketDataService:
                 exchange=exchange,
             )
         return tick
+
+    def get_option_chain(
+        self, underlying: str, exchange: str, expiry_date: str
+    ) -> OptionChain:
+        """Return option chain from cache, falling back to a broker REST fetch."""
+        logger.debug(
+            "MarketDataService.get_option_chain: calling engine.query.get_option_chain "
+            "underlying={underlying} exchange={exchange} expiry_date={expiry_date}",
+            underlying=underlying,
+            exchange=exchange,
+            expiry_date=expiry_date,
+        )
+        chain = self._provider.engine.query.get_option_chain(
+            underlying, exchange, expiry_date
+        )
+        logger.debug("MarketDataService.get_option_chain: engine.query.get_option_chain returned")
+        return chain
 
     def market_status(self) -> MarketStatusSnapshot:
         """Return current market status."""

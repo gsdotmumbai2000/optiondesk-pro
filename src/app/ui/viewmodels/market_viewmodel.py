@@ -16,6 +16,7 @@ class MarketViewModel(BaseViewModel):
     watchlist_changed = Signal(list)
     tick_updated = Signal(dict)
     market_status_changed = Signal(dict)
+    option_chain_changed = Signal(list)
 
     def __init__(self, ctx: ViewModelContext, parent=None) -> None:
         super().__init__(parent)
@@ -26,13 +27,20 @@ class MarketViewModel(BaseViewModel):
         self._last_update = "—"
         self._market_status = "—"
         self._connection_status = "—"
+        self._option_chain_underlying = ""
+        self._option_chain_exchange = ""
+        self._option_chain_expiry = ""
+        self._broker_ready = False
+        self._option_chain_auto_requested = False
         self.refresh_command = RelayCommand(self.refresh, parent=self)
         self._ctx.events.market_updated.connect(self._on_market_updated)
         self._ctx.events.tick_received.connect(self._on_tick)
         self._ctx.events.market_opened.connect(self._on_market_status)
         self._ctx.events.market_closed.connect(self._on_market_status)
-        self._ctx.events.broker_connected.connect(lambda _: self._load_status())
-        self._ctx.events.broker_disconnected.connect(lambda _: self._load_status())
+        self._ctx.events.broker_connected.connect(self._on_broker_ready)
+        self._ctx.events.authentication_succeeded.connect(self._on_broker_ready)
+        self._ctx.events.broker_disconnected.connect(self._on_broker_disconnected)
+        self._ctx.events.option_chain_updated.connect(self._on_option_chain_event)
         self._load_watchlist_only()
 
     @Property(list, notify=watchlist_changed)
@@ -68,6 +76,52 @@ class MarketViewModel(BaseViewModel):
 
         def err(msg: str):
             self.busy = False
+            self.set_error(msg)
+
+        self._ctx.worker.run(work, done, err)
+
+    def load_option_chain(self, underlying: str = "NIFTY", *, exchange: str = "NFO") -> None:
+        """Load the initial ATM-centered option chain snapshot asynchronously.
+
+        Performs a broker REST call and subscribes the live strike window,
+        so it always runs on the BackgroundWorker thread pool rather than
+        blocking the Qt UI thread. Requires an already-connected broker
+        session; call after broker_connected/authentication_succeeded.
+        """
+        logger.info("Option chain load requested")
+        if not self._broker_ready:
+            logger.info("Option chain load skipped: broker not connected")
+            return
+        self.busy = True
+
+        def work():
+            logger.info("Option chain load started")
+            return self._ctx.provider.market.initial_option_chain(
+                self._ctx.session_id, underlying, exchange=exchange
+            )
+
+        def done(result):
+            self.busy = False
+            if not result or not result.success:
+                message = result.message if result else "Option chain unavailable"
+                logger.warning("Option chain load failed: {error}", error=message)
+                self.status_message = message
+                return
+            data = result.data or {}
+            self._option_chain_underlying = str(data.get("underlying", underlying))
+            self._option_chain_exchange = str(data.get("exchange", exchange))
+            self._option_chain_expiry = str(data.get("expiry_date", ""))
+            self.option_chain_changed.emit(self._rows_from_rest_strikes(data.get("strikes", [])))
+            logger.debug("UI result emitted: option_chain_changed")
+            self.status_message = result.message
+            logger.info(
+                "Option chain load completed: strikes={count}",
+                count=len(data.get("strikes", [])),
+            )
+
+        def err(msg: str):
+            self.busy = False
+            logger.warning("Option chain load failed: {error}", error=msg)
             self.set_error(msg)
 
         self._ctx.worker.run(work, done, err)
@@ -114,6 +168,20 @@ class MarketViewModel(BaseViewModel):
         self.status_message = "Market data updated"
         self._load_status()
 
+    def _on_broker_ready(self, payload: dict) -> None:
+        """Handle broker_connected/authentication_succeeded: enable and trigger load once."""
+        self._broker_ready = True
+        self._load_status()
+        if self._option_chain_auto_requested:
+            return
+        self._option_chain_auto_requested = True
+        self.load_option_chain()
+
+    def _on_broker_disconnected(self, payload: dict) -> None:
+        self._broker_ready = False
+        self._option_chain_auto_requested = False
+        self._load_status()
+
     def _on_tick(self, payload: dict) -> None:
         tick = payload.get("tick", payload)
         log_tick_diagnostic(logger, "VIEWMODEL", "tick received", tick)
@@ -128,3 +196,78 @@ class MarketViewModel(BaseViewModel):
         self._spot_price = str(tick.get("ltp", "—"))
         self._last_update = str(tick.get("timestamp", "—"))
         self.tick_updated.emit(tick)
+
+    def _on_option_chain_event(self, payload: dict) -> None:
+        chain = payload.get("chain")
+        if not isinstance(chain, dict):
+            return
+        if (
+            chain.get("underlying") != self._option_chain_underlying
+            or chain.get("exchange") != self._option_chain_exchange
+            or chain.get("expiry_date") != self._option_chain_expiry
+        ):
+            return
+        self.option_chain_changed.emit(self._rows_from_live_chain(chain))
+
+    @staticmethod
+    def _rows_from_rest_strikes(strikes: list) -> list[tuple]:
+        """Build (Type, Strike, OI, Volume, IV, Delta, Gamma, Theta, Vega) rows."""
+        rows: list[tuple] = []
+        for strike in strikes:
+            if not isinstance(strike, dict):
+                continue
+            price = strike.get("strike_price", "—")
+            rows.append(_option_row("CE", price, strike, "call"))
+            rows.append(_option_row("PE", price, strike, "put"))
+        return rows
+
+    @staticmethod
+    def _rows_from_live_chain(chain: dict) -> list[tuple]:
+        """Build display rows from a LiveOptionChain event payload."""
+        strikes = chain.get("strikes", {})
+        rows: list[tuple] = []
+        for row in strikes.values() if isinstance(strikes, dict) else []:
+            if not isinstance(row, dict):
+                continue
+            price = row.get("strike_price", "—")
+            call = row.get("call") or {}
+            put = row.get("put") or {}
+            rows.append(_live_option_row("CE", price, call))
+            rows.append(_live_option_row("PE", price, put))
+        return rows
+
+
+def _option_row(side: str, strike_price, strike: dict, prefix: str) -> tuple:
+    def field(name: str):
+        value = strike.get(f"{prefix}_{name}")
+        return str(value) if value is not None else "—"
+
+    return (
+        side,
+        str(strike_price),
+        field("oi"),
+        field("volume"),
+        field("iv"),
+        "—",
+        "—",
+        "—",
+        "—",
+    )
+
+
+def _live_option_row(side: str, strike_price, leg: dict) -> tuple:
+    def field(name: str):
+        value = leg.get(name)
+        return str(value) if value is not None else "—"
+
+    return (
+        side,
+        str(strike_price),
+        field("open_interest"),
+        field("volume"),
+        field("implied_volatility"),
+        "—",
+        "—",
+        "—",
+        "—",
+    )

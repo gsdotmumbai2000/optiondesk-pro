@@ -77,6 +77,32 @@ def log_tick_diagnostic(
     )
 
 
+# TEMPORARY DIAGNOSTIC (NIFTY spot-unavailable trace, remove after root cause is confirmed):
+# markers used to gate boundary logging to cash/index-related ticks only.
+_INDEX_RELATED_MARKERS: tuple[str, ...] = (
+    "NIFTY 50",
+    "NIFTY",
+    "BANKNIFTY",
+    "FINNIFTY",
+    "MIDCPNIFTY",
+    "CNXBAN",
+    "NIFFIN",
+    "NIFSEL",
+)
+
+
+def is_index_related_text(text: str | None) -> bool:
+    """Return True when text references a cash/index symbol (NIFTY family).
+
+    Temporary helper for boundary tracing of the NIFTY spot-unavailable
+    investigation; not used by any functional/business logic.
+    """
+    if not text:
+        return False
+    upper = str(text).upper()
+    return any(marker in upper for marker in _INDEX_RELATED_MARKERS)
+
+
 def _tick_fields(tick: Any) -> dict[str, Any]:
     if isinstance(tick, dict):
         return {

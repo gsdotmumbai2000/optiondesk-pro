@@ -27,7 +27,9 @@ def normalize_quote(
         bid=to_decimal(data.get("best_bid_price") or data.get("bPrice") or data.get("bid_price")),
         ask=to_decimal(data.get("best_offer_price") or data.get("sPrice") or data.get("offer_price")),
         volume=to_int(data.get("total_quantity_traded") or data.get("ttq") or data.get("total_traded_volume")),
-        open_interest=to_int(data.get("open_interest") or data.get("open_interest_value")),
+        open_interest=to_int(
+            data.get("open_interest") or data.get("open_interest_value") or data.get("OI")
+        ),
         change=to_decimal(data.get("change") or data.get("absolute_change") or data.get("ltp_percent_change")),
         change_percent=to_decimal(data.get("percentage_change")),
         timestamp=datetime.now(timezone.utc),

@@ -4,6 +4,7 @@ from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from app.logging.logging_manager import get_logger
+from app.market_data.diagnostics import is_index_related_text
 from app.ui.charts import price_chart, volatility_chart
 from app.ui.option_chain.option_chain_view import OptionChainView
 from app.ui.viewmodels.market_viewmodel import MarketViewModel
@@ -42,6 +43,7 @@ class MarketView(QWidget):
         viewmodel.watchlist_changed.connect(self._on_watchlist)
         viewmodel.tick_updated.connect(self._on_tick)
         viewmodel.market_status_changed.connect(self._on_market_status)
+        viewmodel.option_chain_changed.connect(self._chain.load_rows)
         self._on_watchlist(viewmodel.watchlist)
 
     def _wrap(self, title: str, widget: QWidget) -> QWidget:
@@ -70,6 +72,16 @@ class MarketView(QWidget):
         symbol = str(tick.get("symbol", ""))
         if symbol == "NIFTY":
             self._spot.update_tick(tick)
+        # TEMPORARY DIAGNOSTIC (NIFTY spot-unavailable trace) - boundary 5:
+        # watchlist update, cash/index-related ticks only.
+        if is_index_related_text(symbol):
+            logger.debug(
+                "[DIAG-5 WATCHLIST] incoming_symbol={incoming_symbol!r} ltp={ltp!r} "
+                "lookup_result={lookup_result!r}",
+                incoming_symbol=symbol,
+                ltp=tick.get("ltp"),
+                lookup_result=self._symbol_rows.get(symbol),
+            )
         logger.debug(
             "Watchlist tick lookup: incoming_symbol={incoming_symbol!r}, "
             "available_keys={available_keys!r}, lookup_result={lookup_result!r}",

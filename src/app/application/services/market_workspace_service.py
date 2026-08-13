@@ -1,6 +1,7 @@
 """Market workspace service."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from app.application.cache.workspace_cache import WorkspaceCache
 from app.application.models.enums import WorkspaceType
@@ -10,8 +11,14 @@ from app.application.registry.engine_registry import EngineRegistry
 from app.application.services.live_analytics_support import LiveAnalyticsSupport
 from app.application.session.session_manager import SessionManager
 from app.brokers.shared.enums import ProductType
+from app.logging.logging_manager import get_logger
+from app.market.enums import ExchangeCode
 from app.market_data.models.snapshot import MarketSnapshot
 from app.market_data.services.market_data_service import MarketDataService
+
+logger = get_logger(__name__)
+
+_STRIKE_WINDOW_RADIUS = 10
 
 
 class MarketWorkspaceService(LiveAnalyticsSupport):
@@ -159,6 +166,123 @@ class MarketWorkspaceService(LiveAnalyticsSupport):
             f"Option chain for {symbol}",
             payload,
         )
+
+    def initial_option_chain(
+        self,
+        session_id: str,
+        underlying: str = "NIFTY",
+        *,
+        exchange: str = "NFO",
+    ) -> WorkspaceOperationResult:
+        """Fetch an initial REST option-chain snapshot for the ATM window.
+
+        Resolves the nearest weekly expiry and ATM-centered strike window
+        via the Instrument/Expiry Master (never hard-coded), fetches the
+        chain through the existing MarketDataService/broker REST path
+        (which also populates the existing market-data chain cache), and
+        subscribes live CALL+PUT feeds for the displayed window so
+        subsequent ticks flow through the existing live pipeline.
+
+        This performs a broker REST call and ~2N subscribe calls; callers
+        must invoke it off the Qt UI thread.
+        """
+        logger.debug(
+            "initial_option_chain: entering underlying={underlying} exchange={exchange}",
+            underlying=underlying,
+            exchange=exchange,
+        )
+        if self._market_data is None:
+            return WorkspaceOperationResult(False, WorkspaceType.MARKET, "No market data")
+
+        instrument_service = self._engines.market_master.instrument_service
+        expiry_service = self._engines.market_master.expiry_service
+        expiry_record = expiry_service.nearest_expiry(
+            underlying, ExchangeCode.NSEFO.value, on_date=date.today()
+        )
+        if expiry_record is None:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.MARKET, f"No expiry available for {underlying}"
+            )
+        expiry_date = expiry_record.expiry_date.strftime("%d-%b-%Y")
+        logger.debug("initial_option_chain: expiry resolved expiry_date={expiry_date}", expiry_date=expiry_date)
+
+        logger.debug("initial_option_chain: calling market_data.get_option_chain")
+        chain = self._market_data.get_option_chain(underlying, exchange, expiry_date)
+        logger.debug("initial_option_chain: market_data.get_option_chain returned")
+
+        spot = chain.spot_price
+        if spot is None:
+            tick = self._market_data.latest_tick(underlying, "NSE")
+            spot = tick.ltp if tick is not None else None
+
+        atm: Decimal | None = None
+        window: list[Decimal] = []
+        if spot is not None:
+            try:
+                interval = instrument_service.get_strike_interval(underlying)
+                atm = instrument_service.atm_strike(underlying, spot)
+            except LookupError:
+                atm = None
+            if atm is not None and interval > 0:
+                window = [
+                    atm + (interval * offset)
+                    for offset in range(-_STRIKE_WINDOW_RADIUS, _STRIKE_WINDOW_RADIUS + 1)
+                ]
+        logger.debug("initial_option_chain: ATM strike resolved atm={atm}", atm=atm)
+
+        strikes_by_price = {strike.strike_price: strike for strike in chain.strikes}
+        windowed = [strikes_by_price[price] for price in window if price in strikes_by_price]
+        for strike in windowed:
+            strike.is_atm = atm is not None and strike.strike_price == atm
+
+        if window:
+            logger.debug(
+                "initial_option_chain: subscribing option window strike_count={count}",
+                count=len(window),
+            )
+            self._subscribe_option_window(underlying, exchange, expiry_date, window)
+            logger.debug("initial_option_chain: option window subscribed")
+
+        payload = {
+            "underlying": underlying,
+            "exchange": exchange,
+            "expiry_date": expiry_date,
+            "spot_price": str(spot) if spot is not None else None,
+            "atm_strike": str(atm) if atm is not None else None,
+            "strikes": [strike.model_dump(mode="json") for strike in windowed],
+        }
+        self._cache.put_data(f"{session_id}:chain:{underlying}", payload)
+        logger.debug(
+            "initial_option_chain: result returned strike_count={count}",
+            count=len(windowed),
+        )
+        return WorkspaceOperationResult(
+            True,
+            WorkspaceType.MARKET,
+            f"Option chain for {underlying} {expiry_date} ({len(windowed)} strikes)",
+            payload,
+        )
+
+    def _subscribe_option_window(
+        self,
+        underlying: str,
+        exchange: str,
+        expiry_date: str,
+        strikes: list[Decimal],
+    ) -> None:
+        """Subscribe live CALL and PUT feeds for every strike in the window."""
+        if self._market_data is None:
+            return
+        for strike in strikes:
+            for right in ("CALL", "PUT"):
+                self._market_data.subscribe(
+                    underlying,
+                    exchange,
+                    product_type=ProductType.OPTIONS,
+                    expiry_date=expiry_date,
+                    strike_price=str(strike),
+                    option_right=right,
+                )
 
     def live_analytics(
         self,

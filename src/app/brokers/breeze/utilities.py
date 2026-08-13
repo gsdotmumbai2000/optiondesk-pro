@@ -87,7 +87,14 @@ def map_historical_interval(interval: HistoricalInterval) -> str:
 
 
 def unwrap_success(response: dict[str, Any]) -> Any:
-    """Extract Success payload or raise with Error."""
-    if "Error" in response:
-        raise BrokerException(str(response["Error"]))
+    """Extract Success payload or raise with Error.
+
+    Breeze's response envelope always includes an "Error" key, set to None
+    on success (e.g. {"Success": [...], "Status": 200, "Error": None}), so
+    checking key presence rejects every successful response. The Error
+    value's truthiness is what actually indicates a failure.
+    """
+    error = response.get("Error")
+    if error:
+        raise BrokerException(str(error))
     return response.get("Success", response)

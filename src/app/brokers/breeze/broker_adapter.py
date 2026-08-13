@@ -30,7 +30,10 @@ from app.brokers.shared.models import (BrokerHealth, BrokerProfile, Funds,
 from app.config.models.app_config import BrokerConfig
 from app.events.application_events import ApplicationEvent
 from app.events.event_bus import EventBus
+from app.logging.logging_manager import get_logger
 from app.security.credential_manager import CredentialManager
+
+logger = get_logger(__name__)
 
 
 class BreezeBrokerAdapter(BrokerInterface):
@@ -113,13 +116,31 @@ class BreezeBrokerAdapter(BrokerInterface):
             self._state = ConnectionState.DISCONNECTED
 
     def authenticate(self) -> None:
-        """Authenticate with Breeze."""
+        """Authenticate with Breeze.
+
+        AuthenticationSucceededEvent is published only after the session is
+        marked authenticated and broker state is CONNECTED, so subscribers
+        (e.g. MarketViewModel triggering the option-chain load) never see
+        the event before the session is actually usable for API calls.
+
+        The websocket connect() call must happen before publish_authenticated():
+        subscribers of AuthenticationSucceededEvent are invoked synchronously
+        and include the default-subscription activation path, which calls the
+        broker's subscribe_quotes() immediately. If the underlying Breeze SDK
+        websocket has not connected yet at that point, its subscribe_feeds()
+        silently no-ops (it only acts once its socket handler exists) without
+        raising or returning an error string, so the subscription is marked
+        active locally while never having reached the server.
+        """
         with self._lock:
             self._auth_service.login()
             self._session.mark_authenticated()
+            logger.debug("Breeze session marked authenticated")
             self._state = ConnectionState.CONNECTED
+            logger.debug("Broker state set to CONNECTED")
             if self._config.websocket_enabled:
                 self._websocket.connect()
+            self._auth_service.publish_authenticated()
 
     def refresh_session(self) -> None:
         """Refresh Breeze session."""
@@ -207,8 +228,12 @@ class BreezeBrokerAdapter(BrokerInterface):
         )
 
     def get_option_chain(self, request: OptionChainRequest) -> OptionChain:
+        logger.debug("BreezeBrokerAdapter.get_option_chain: ensuring session")
         self._ensure_session()
-        return self._option_chain.get_option_chain(request)
+        logger.debug("BreezeBrokerAdapter.get_option_chain: session ensured, calling BreezeOptionChain")
+        chain = self._option_chain.get_option_chain(request)
+        logger.debug("BreezeBrokerAdapter.get_option_chain: BreezeOptionChain returned")
+        return chain
 
     def get_historical_data(self, request: HistoricalRequest) -> list[HistoricalBar]:
         self._ensure_session()

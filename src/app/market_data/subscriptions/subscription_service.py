@@ -51,7 +51,9 @@ class SubscriptionService:
     ) -> None:
         """Queue symbol for subscription without contacting broker."""
         self._validator.validate(symbol, exchange)
-        key = self._key(symbol, exchange, product_type, expiry_date, strike_price)
+        key = self._key(
+            symbol, exchange, product_type, expiry_date, strike_price, option_right
+        )
         self._pending[key] = SubscriptionKey(
             symbol=symbol,
             exchange=exchange,
@@ -71,9 +73,12 @@ class SubscriptionService:
         product_type: ProductType = ProductType.CASH,
         expiry_date: str = "",
         strike_price: str = "",
+        option_right: str = "",
     ) -> None:
         """Remove symbol from watchlist and active subscriptions."""
-        key = self._key(symbol, exchange, product_type, expiry_date, strike_price)
+        key = self._key(
+            symbol, exchange, product_type, expiry_date, strike_price, option_right
+        )
         self._pending.pop(key, None)
         active = self._active.pop(key, None)
         if active is not None:
@@ -167,8 +172,12 @@ class SubscriptionService:
         product_type: ProductType,
         expiry_date: str,
         strike_price: str,
+        option_right: str = "",
     ) -> str:
-        return f"{exchange}:{symbol}:{product_type.value}:{expiry_date}:{strike_price}"
+        return (
+            f"{exchange}:{symbol}:{product_type.value}:{expiry_date}:"
+            f"{strike_price}:{option_right.strip().upper()}"
+        )
 
     def _publish_added(self, sub: SubscriptionKey) -> None:
         if self._event_bus is None:

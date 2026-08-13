@@ -17,11 +17,14 @@ from app.market_data.models import (
     OptionChain,
     Quote,
 )
+from app.logging.logging_manager import get_logger
 from app.market_data.normalizer.chain_normalizer import normalize_option_chain
 from app.market_data.normalizer.historical_normalizer import normalize_historical_bars
 from app.market_data.normalizer.quote_normalizer import normalize_quote, to_future_quote, to_index_quote
 from app.market_data.snapshots.snapshot_manager import SnapshotManager
 from app.market_data.validation.validators import MarketDataValidator
+
+logger = get_logger(__name__)
 
 
 class MarketDataQueryService:
@@ -87,9 +90,18 @@ class MarketDataQueryService:
         expiry_date: str,
     ) -> OptionChain:
         """Return option chain from cache or broker."""
+        logger.debug(
+            "MarketDataQueryService.get_option_chain: entering underlying={underlying} "
+            "exchange={exchange} expiry_date={expiry_date}",
+            underlying=underlying,
+            exchange=exchange,
+            expiry_date=expiry_date,
+        )
         cached = self._cache.get_chain(underlying, exchange, expiry_date)
         if cached is not None:
+            logger.debug("MarketDataQueryService.get_option_chain: cache hit")
             return cached
+        logger.debug("MarketDataQueryService.get_option_chain: cache miss, calling broker.get_option_chain")
         broker_chain = self._broker.get_option_chain(
             BrokerOptionChainRequest(
                 underlying=underlying,
@@ -97,6 +109,7 @@ class MarketDataQueryService:
                 expiry_date=expiry_date,
             )
         )
+        logger.debug("MarketDataQueryService.get_option_chain: broker.get_option_chain returned")
         chain = normalize_option_chain(broker_chain)
         self._validator.validate_chain(chain)
         self._cache.put_chain(chain)

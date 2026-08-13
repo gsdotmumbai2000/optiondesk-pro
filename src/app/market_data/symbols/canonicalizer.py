@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Protocol
 
 
@@ -104,3 +105,31 @@ class InstrumentMasterSymbolCanonicalizer:
         stripped = broker_symbol.strip()
         label = stripped.rsplit("!", maxsplit=1)[-1].strip()
         return tuple(dict.fromkeys(candidate for candidate in (stripped, label) if candidate))
+
+
+def build_option_contract_symbol(
+    underlying: str, expiry_date: str, strike_price: str, option_right: str
+) -> str:
+    """Build a deterministic canonical option contract symbol.
+
+    Breeze's streaming option ticks identify the contract with an opaque
+    internal token (e.g. ``4.1!51219``) rather than a stable trading symbol.
+    This builds one from the already-canonical underlying plus the tick's
+    own expiry/strike/right fields, e.g.::
+
+        build_option_contract_symbol("NIFTY", "13-Feb-2026", "24500", "Call")
+        -> "NIFTY-13-Feb-2026-24500-CE"
+    """
+    side = "PE" if option_right.strip().upper().startswith("P") else "CE"
+    return f"{underlying}-{expiry_date.strip()}-{_format_strike(strike_price)}-{side}"
+
+
+def _format_strike(strike_price: str) -> str:
+    """Render a strike price without a redundant trailing ``.0``."""
+    try:
+        value = Decimal(str(strike_price))
+    except (InvalidOperation, ValueError):
+        return str(strike_price).strip()
+    if value == value.to_integral_value():
+        return str(int(value))
+    return format(value.normalize(), "f")

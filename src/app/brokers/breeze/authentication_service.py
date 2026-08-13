@@ -43,7 +43,14 @@ class BreezeAuthenticationService:
         return login_url(api_key)
 
     def login(self, session_token: str | None = None) -> None:
-        """Authenticate with optional new session token."""
+        """Authenticate with optional new session token.
+
+        Does not publish AuthenticationSucceededEvent: the Breeze API call
+        succeeding does not yet mean the session is usable for other calls
+        (BreezeSessionManager.mark_authenticated() has not run and broker
+        state is not CONNECTED). Callers must call publish_authenticated()
+        once the session is actually ready.
+        """
         logger.info(
             "Breeze login started for account {account}",
             account=self._config.account_name,
@@ -51,16 +58,20 @@ class BreezeAuthenticationService:
         if session_token:
             self._config.store_session_token(session_token)
         self._authenticate_with_retry()
-        self._publish_success()
+        logger.info("Breeze authentication API succeeded")
 
     def reconnect(self) -> None:
-        """Reconnect using stored credentials."""
+        """Reconnect using stored credentials.
+
+        See login() docstring: publish_authenticated() is the caller's
+        responsibility once the session is actually ready.
+        """
         logger.info(
             "Breeze reconnect for account {account}",
             account=self._config.account_name,
         )
         self._authenticate_with_retry()
-        self._publish_success()
+        logger.info("Breeze authentication API succeeded")
 
     def restore_session(self) -> bool:
         """Restore session after application restart."""
@@ -128,8 +139,13 @@ class BreezeAuthenticationService:
             self._publish_failure(str(error))
             raise
 
-    def _publish_success(self) -> None:
-        """Publish authentication success event."""
+    def publish_authenticated(self) -> None:
+        """Publish AuthenticationSucceededEvent.
+
+        Call only once the broker session is fully ready for normal API
+        calls (session marked authenticated, state CONNECTED) — this event
+        is interpreted by the rest of the app as "broker session usable".
+        """
         self.persist_session()
         payload = {
             "broker": self._config.broker_code,
@@ -137,7 +153,7 @@ class BreezeAuthenticationService:
             "user_id": self._config.user_id,
             "environment": self._config.environment.value,
         }
-        logger.info("Breeze authentication succeeded")
+        logger.info("AuthenticationSucceededEvent published")
         self._publish(AuthenticationSucceededEvent(payload=payload))
 
     def _publish_failure(self, reason: str) -> None:

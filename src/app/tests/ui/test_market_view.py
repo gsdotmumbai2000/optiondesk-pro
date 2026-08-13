@@ -22,15 +22,39 @@ class _FakeMarketViewModel(QObject):
     watchlist_changed = Signal(list)
     tick_updated = Signal(dict)
     market_status_changed = Signal(dict)
+    option_chain_changed = Signal(list)
 
     def __init__(self, watchlist: list[str]) -> None:
         super().__init__()
         self.watchlist = watchlist
+        self.load_option_chain_calls: list[tuple] = []
+
+    def load_option_chain(self, underlying: str = "NIFTY", *, exchange: str = "NFO") -> None:
+        """No-op: MarketView must call this without blocking construction."""
+        self.load_option_chain_calls.append((underlying, exchange))
 
 
 def _make_view(qapp: QApplication) -> MarketView:
     viewmodel = _FakeMarketViewModel(["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"])
     return MarketView(viewmodel)
+
+
+class TestMarketViewDoesNotEagerlyLoadOptionChain:
+    """MarketView must not call load_option_chain() from its constructor.
+
+    The broker session may not be connected yet at construction time
+    (MainWindow builds ViewModels/workspaces before broker session restore
+    runs), so eagerly calling load_option_chain() here would always fail.
+    MarketViewModel now triggers the load itself once the broker session is
+    actually connected/authenticated.
+    """
+
+    def test_construction_does_not_call_load_option_chain(self, qapp: QApplication) -> None:
+        viewmodel = _FakeMarketViewModel(["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"])
+
+        MarketView(viewmodel)
+
+        assert viewmodel.load_option_chain_calls == []
 
 
 def _watchlist_ltp(view: MarketView, symbol: str) -> str:
