@@ -9,6 +9,7 @@ from app.brokers.breeze.authentication_service import BreezeAuthenticationServic
 from app.brokers.breeze.client import resolve_client_factory
 from app.brokers.breeze.configuration_provider import BreezeConfigurationProvider
 from app.brokers.breeze.historical import BreezeHistorical
+from app.brokers.breeze.margin import BreezeMargin
 from app.brokers.breeze.market_data import BreezeMarketData
 from app.brokers.breeze.option_chain import BreezeOptionChain
 from app.brokers.breeze.portfolio import BreezePortfolio
@@ -23,7 +24,7 @@ from app.brokers.shared.enums import BrokerCode, ConnectionState
 from app.brokers.shared.exceptions import BrokerConnectionException
 from app.brokers.shared.models import (BrokerHealth, BrokerProfile, Funds,
                                        HistoricalBar, HistoricalRequest,
-                                       Holding, OptionChain,
+                                       Holding, Margins, OptionChain,
                                        OptionChainRequest, Order,
                                        OrderModification, OrderRequest,
                                        Position, Quote, QuoteSubscription)
@@ -73,6 +74,7 @@ class BreezeBrokerAdapter(BrokerInterface):
         self._historical = BreezeHistorical(self._client)
         self._trading = BreezeTrading(self._client)
         self._portfolio = BreezePortfolio(self._client, BrokerCode.BREEZE.value)
+        self._margin = BreezeMargin(self._client)
         self._option_chain = BreezeOptionChain(self._client)
         self._websocket = BreezeWebSocket(self._client, event_bus)
 
@@ -256,6 +258,12 @@ class BreezeBrokerAdapter(BrokerInterface):
     def download_instrument_master(self) -> list[dict[str, str]]:
         self._ensure_session()
         return self._client.get_stock_script_list()
+
+    def calculate_margin(
+        self, positions: list[OrderRequest], exchange_code: str
+    ) -> Margins:
+        self._ensure_session()
+        return self._margin.calculate_margin(positions, exchange_code)
 
     def health(self) -> BrokerHealth:
         return BrokerHealth(

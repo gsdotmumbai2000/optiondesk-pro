@@ -8,7 +8,7 @@ from app.brokers.shared.enums import BrokerCode, ConnectionState
 from app.brokers.shared.exceptions import BrokerNotSupportedException
 from app.brokers.shared.models import (BrokerHealth, BrokerProfile, Funds,
                                        HistoricalBar, HistoricalRequest,
-                                       Holding, OptionChain,
+                                       Holding, Margins, OptionChain,
                                        OptionChainRequest, Order,
                                        OrderModification, OrderRequest,
                                        Position, Quote, QuoteSubscription)
@@ -112,6 +112,11 @@ class ZerodhaBroker(BrokerInterface):
         self._unsupported()
 
     def download_instrument_master(self) -> list[dict[str, str]]:
+        self._unsupported()
+
+    def calculate_margin(
+        self, positions: list[OrderRequest], exchange_code: str
+    ) -> Margins:
         self._unsupported()
 
     def health(self) -> BrokerHealth:

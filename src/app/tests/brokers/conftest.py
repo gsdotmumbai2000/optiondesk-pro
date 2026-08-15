@@ -175,6 +175,21 @@ class MockBreezeClient:
     def unsubscribe_feeds(self, **kwargs: Any) -> dict[str, Any]:
         return {"Success": {}}
 
+    def margin_calculator(self, lists: list[dict[str, Any]], exchange_code: str) -> dict[str, Any]:
+        return {
+            "Success": {
+                "margin_calulation": lists,
+                "non_span_margin_required": "5000",
+                "order_value": "0",
+                "order_margin": "15000",
+                "trade_margin": None,
+                "block_trade_margin": "0",
+                "span_margin_required": "10000",
+            },
+            "Status": 200,
+            "Error": None,
+        }
+
     def ws_connect(self) -> None:
         return None
 

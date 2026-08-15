@@ -1,5 +1,6 @@
 """Trading workspace service."""
 
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from app.ai.models.batch import RecommendationBatchResult
@@ -7,9 +8,11 @@ from app.ai.models.request import RecommendationAnalysisRequest
 from app.application.cache.workspace_cache import WorkspaceCache
 from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult, WorkspaceView
+from app.application.ports.broker_margin_port import BrokerMarginPort
 from app.application.ports.live_analytics_port import LiveAnalyticsPort
 from app.application.ports.market_data_port import MarketDataPort
 from app.application.registry.engine_registry import EngineRegistry
+from app.application.services.broker_margin_support import BrokerMarginSupport
 from app.application.services.live_analytics_support import LiveAnalyticsSupport
 from app.application.services.market_data_support import MarketDataSupport
 from app.application.session.session_manager import SessionManager
@@ -22,7 +25,7 @@ from app.strategy_optimizer.models.request import OptimizationRequest
 from app.strategy_optimizer.models.result import OptimizationResult
 
 
-class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport):
+class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMarginSupport):
     """Trading workflow orchestration API for UI."""
 
     def __init__(
@@ -32,10 +35,12 @@ class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport):
         cache: WorkspaceCache,
         market_data: MarketDataPort | None = None,
         live_analytics: LiveAnalyticsPort | None = None,
+        broker_margin: BrokerMarginPort | None = None,
     ) -> None:
         """Initialize service."""
         MarketDataSupport.__init__(self, market_data)
         LiveAnalyticsSupport.__init__(self, live_analytics)
+        BrokerMarginSupport.__init__(self, broker_margin)
         self._engines = engines
         self._sessions = sessions
         self._cache = cache
@@ -75,6 +80,22 @@ class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport):
             request.strategy.strategy_id,
         )
         return result
+
+    def refresh_broker_margin(
+        self,
+        session_id: str,
+        request: StrategyEvaluationRequest,
+        exchange: str = "NFO",
+    ) -> StrategyEvaluation:
+        """Re-evaluate the strategy with real broker margin when a broker is
+        connected and supports it, falling back to the existing estimated
+        margin otherwise. Intended for an explicit on-demand refresh (e.g. a
+        "Refresh Margin" action) -- not the tick-driven live pipeline, since
+        the underlying broker call is a rate-limited REST request."""
+        broker_response = self.broker_margin(request.legs, exchange)
+        if broker_response is not None:
+            request = replace(request, broker_response=broker_response)
+        return self.evaluate_strategy(session_id, request)
 
     def optimize_strategy(
         self,

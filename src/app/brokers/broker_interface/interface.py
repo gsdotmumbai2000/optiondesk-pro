@@ -6,7 +6,7 @@ from datetime import datetime
 from app.brokers.shared.enums import BrokerCode, ConnectionState
 from app.brokers.shared.models import (BrokerHealth, BrokerProfile, Funds,
                                        HistoricalBar, HistoricalRequest,
-                                       Holding, OptionChain,
+                                       Holding, Margins, OptionChain,
                                        OptionChainRequest, Order,
                                        OrderModification, OrderRequest,
                                        Position, Quote, QuoteSubscription)
@@ -127,6 +127,12 @@ class BrokerInterface(ABC):
     @abstractmethod
     def download_instrument_master(self) -> list[dict[str, str]]:
         """Download broker instrument master."""
+
+    @abstractmethod
+    def calculate_margin(
+        self, positions: list[OrderRequest], exchange_code: str
+    ) -> Margins:
+        """Return real pre-trade margin for a basket of positions."""
 
     @abstractmethod
     def health(self) -> BrokerHealth:

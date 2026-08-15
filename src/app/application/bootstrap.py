@@ -9,6 +9,7 @@ from app.application.orchestration.workspace_coordinator import WorkspaceCoordin
 from app.application.queries.query_dispatcher import QueryDispatcher
 from app.application.services.ai_workspace_service import AIWorkspaceService
 from app.application.services.backtesting_workspace_service import BacktestingWorkspaceService
+from app.application.services.broker_margin_adapter import BrokerMarginAdapter
 from app.application.services.market_workspace_service import MarketWorkspaceService
 from app.application.services.order_workspace_service import OrderWorkspaceService
 from app.application.services.portfolio_workspace_service import PortfolioWorkspaceService
@@ -61,12 +62,17 @@ class ApplicationProvider:
         if self.live_analytics_provider is not None:
             self.live_analytics_provider.start()
 
+        self.broker_margin_adapter = (
+            BrokerMarginAdapter(broker_provider) if broker_provider is not None else None
+        )
+
         self.trading = TradingWorkspaceService(
             self.engines,
             self.sessions,
             self.cache,
             self.market_data_service,
             self.live_analytics_service,
+            self.broker_margin_adapter,
         )
         self.strategy = StrategyWorkspaceService(
             self.engines,
