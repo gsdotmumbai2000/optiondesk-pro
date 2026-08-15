@@ -51,6 +51,11 @@ class SessionManager:
             raise SessionNotFoundError(f"session not found: {session_id}")
         return session
 
+    def all_sessions(self) -> tuple[ApplicationSession, ...]:
+        """Return all known sessions (read-only snapshot)."""
+        with self._lock:
+            return tuple(self._sessions.values())
+
     def set_active_workspace(
         self,
         session_id: str,

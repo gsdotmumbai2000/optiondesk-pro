@@ -36,7 +36,8 @@ class LiveCalculationPipeline:
         chain_market = self._context_builder.build_chain_market_snapshot(key, ctx)
         vol_market = self._context_builder.build_volatility_snapshot(key, ctx)
         historical = self._context_builder.build_historical_snapshot(key)
-        portfolio = self._context_builder.build_portfolio()
+        portfolio = self._context_builder.build_portfolio(ctx)
+        resolved_legs = portfolio.legs
 
         pricing = self._engines.pricing.price(ctx, contract)
         greeks = self._engines.greeks.calculate_greeks(ctx, contract, pricing)
@@ -68,40 +69,42 @@ class LiveCalculationPipeline:
                 chain_analysis=chain_analysis,
             )
         )
-        payoff = self._engines.payoff.calculate(
-            PayoffAnalysisRequest(
-                context=ctx,
-                pricing_result=pricing,
-                greeks_result=greeks,
-                volatility_result=volatility,
-                probability_result=probability,
-                legs=(),
-                portfolio=portfolio,
+        payoff = risk = margin = None
+        if resolved_legs:
+            payoff = self._engines.payoff.calculate(
+                PayoffAnalysisRequest(
+                    context=ctx,
+                    pricing_result=pricing,
+                    greeks_result=greeks,
+                    volatility_result=volatility,
+                    probability_result=probability,
+                    legs=resolved_legs,
+                    portfolio=portfolio,
+                )
             )
-        )
-        risk = self._engines.risk.calculate(
-            RiskAnalysisRequest(
-                context=ctx,
-                pricing_result=pricing,
-                greeks_result=greeks,
-                volatility_result=volatility,
-                probability_result=probability,
-                payoff_result=payoff,
-                legs=(),
-                market_snapshot=market_snapshot,
-                portfolio=portfolio,
+            risk = self._engines.risk.calculate(
+                RiskAnalysisRequest(
+                    context=ctx,
+                    pricing_result=pricing,
+                    greeks_result=greeks,
+                    volatility_result=volatility,
+                    probability_result=probability,
+                    payoff_result=payoff,
+                    legs=resolved_legs,
+                    market_snapshot=market_snapshot,
+                    portfolio=portfolio,
+                )
             )
-        )
-        margin = self._engines.margin.calculate(
-            MarginAnalysisRequest(
-                context=ctx,
-                legs=(),
-                risk_result=risk,
-                payoff_result=payoff,
-                market_snapshot=market_snapshot,
-                portfolio=portfolio,
+            margin = self._engines.margin.calculate(
+                MarginAnalysisRequest(
+                    context=ctx,
+                    legs=resolved_legs,
+                    risk_result=risk,
+                    payoff_result=payoff,
+                    market_snapshot=market_snapshot,
+                    portfolio=portfolio,
+                )
             )
-        )
         return LiveAnalyticsSnapshot(
             underlying=key.underlying,
             exchange=key.exchange,

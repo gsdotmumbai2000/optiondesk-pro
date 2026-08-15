@@ -9,7 +9,7 @@ from app.brokers.breeze.normalizers.exchange_normalizer import canonical_exchang
 from app.brokers.breeze.normalizers.quote_normalizer import normalize_quote as breeze_quote
 from app.events.event_bus import EventBus
 from app.logging.logging_manager import get_logger
-from app.market_data.diagnostics import is_index_related_text, log_tick_diagnostic
+from app.market_data.diagnostics import log_tick_diagnostic
 from app.market_data.dispatcher.event_dispatcher import EventDispatcher
 from app.market_data.models.quote import OHLC
 from app.market_data.models.tick import TickSnapshot
@@ -103,49 +103,6 @@ class WebSocketService:
         exchange = canonical_exchange(str(item.get("exchange_code") or item.get("exchange") or "NSE"))
         if not symbol:
             return
-        raw_product_type = str(item.get("product_type", ""))
-        raw_stock_name = str(item.get("stock_name") or item.get("display_name") or "")
-        raw_ltp = item.get("ltp") or item.get("last_price") or item.get("last") or item.get("last_trade_price")
-        # TEMPORARY DIAGNOSTIC (NIFTY spot-unavailable trace) - boundary 1:
-        # raw Breeze SDK callback fields, cash/index-related ticks only.
-        if is_index_related_text(symbol) or is_index_related_text(raw_stock_name):
-            logger.debug(
-                "[DIAG-1 RAW-SDK] stock_code={stock_code!r} exchange_code={exchange_code!r} "
-                "product_type={product_type!r} stock_name={stock_name!r} strike_price={strike_price!r} "
-                "right={right!r} ltp={ltp!r}",
-                stock_code=symbol,
-                exchange_code=exchange,
-                product_type=raw_product_type,
-                stock_name=raw_stock_name,
-                strike_price=item.get("strike_price", ""),
-                right=item.get("right", ""),
-                ltp=raw_ltp,
-            )
-            # TEMPORARY DIAGNOSTIC (NIFTY spot-unavailable trace) - boundary 1b:
-            # the untouched raw dict keys, so "stock_code" above is never
-            # mistaken for a literal payload key when it was actually a
-            # fallback to item["symbol"].
-            logger.debug(
-                "[DIAG-1B RAW-KEYS] raw_symbol={raw_symbol!r} raw_stock_code={raw_stock_code!r} "
-                "raw_stock_name={raw_stock_name!r} raw_exchange={raw_exchange!r} "
-                "raw_exchange_code={raw_exchange_code!r} raw_product_type={raw_product_type!r} "
-                "raw_right={raw_right!r} raw_strike_price={raw_strike_price!r} "
-                "raw_ltp={raw_ltp!r} raw_last={raw_last!r} raw_last_price={raw_last_price!r} "
-                "raw_last_trade_price={raw_last_trade_price!r} all_keys={all_keys!r}",
-                raw_symbol=item.get("symbol"),
-                raw_stock_code=item.get("stock_code"),
-                raw_stock_name=item.get("stock_name"),
-                raw_exchange=item.get("exchange"),
-                raw_exchange_code=item.get("exchange_code"),
-                raw_product_type=item.get("product_type"),
-                raw_right=item.get("right"),
-                raw_strike_price=item.get("strike_price"),
-                raw_ltp=item.get("ltp"),
-                raw_last=item.get("last"),
-                raw_last_price=item.get("last_price"),
-                raw_last_trade_price=item.get("last_trade_price"),
-                all_keys=sorted(item.keys()),
-            )
         broker_quote = breeze_quote(symbol, exchange, item)
         option_right = str(item.get("right", ""))
         strike_price = str(item.get("strike_price", ""))
@@ -153,6 +110,8 @@ class WebSocketService:
             canonical = self._canonicalize_option_tick(
                 item, broker_quote, option_right=option_right, strike_price=strike_price
             )
+        elif str(item.get("product_type", "")).upper() in {"FUTURES", "FUTURE"}:
+            canonical = self._canonicalize_future_tick(item, broker_quote)
         else:
             canonical = self._symbol_canonicalizer.canonicalize(
                 broker_quote.symbol,
@@ -181,18 +140,6 @@ class WebSocketService:
             strike_price=str(item.get("strike_price", "")),
             option_right=str(item.get("right", "")),
         )
-        # TEMPORARY DIAGNOSTIC (NIFTY spot-unavailable trace) - boundary 2:
-        # raw symbol vs normalized/canonical symbol, cash/index-related ticks only.
-        if is_index_related_text(symbol) or is_index_related_text(raw_stock_name) or is_index_related_text(tick.symbol):
-            logger.debug(
-                "[DIAG-2 NORMALIZED] raw_symbol={raw_symbol!r} normalized_symbol={normalized_symbol!r} "
-                "exchange={exchange!r} instrument_kind={instrument_kind!r} ltp={ltp!r}",
-                raw_symbol=canonical.broker_symbol,
-                normalized_symbol=canonical.symbol,
-                exchange=tick.exchange,
-                instrument_kind="OPTION" if tick.strike_price else "CASH_INDEX",
-                ltp=tick.ltp,
-            )
         self._dispatcher.enqueue(tick)
         log_tick_diagnostic(logger, "WEBSOCKET", "tick received", tick)
         with self._lock:
@@ -229,3 +176,25 @@ class WebSocketService:
             underlying, expiry_date, strike_price, option_right
         )
         return CanonicalSymbol(symbol=contract_symbol, broker_symbol=broker_quote.symbol)
+
+    def _canonicalize_future_tick(self, item: dict, broker_quote: Any) -> CanonicalSymbol:
+        """Resolve a futures tick's underlying symbol.
+
+        Breeze identifies futures ticks with the same kind of opaque internal
+        token as option ticks (e.g. ``4.1!45080``), keyed off ``stock_name``/
+        display-name rather than a stable trading symbol — confirmed against
+        the installed breeze_connect SDK's get_data_from_stock_token_value(),
+        which enriches NFO/BFO ticks (futures and options alike) via the same
+        token_script_dict_list lookup. Unlike options, a future has no
+        strike/right to embed, so the canonical symbol is the bare resolved
+        underlying (e.g. "NIFTY") — matching what get_future() looks up by
+        underlying + expiry_date alone.
+        """
+        display_name = str(item.get("stock_name") or item.get("display_name") or "")
+        underlying_source = display_name or broker_quote.symbol
+        underlying = self._symbol_canonicalizer.canonicalize(
+            underlying_source,
+            exchange=broker_quote.exchange,
+            broker_code=self._broker.broker_code.value,
+        ).symbol
+        return CanonicalSymbol(symbol=underlying, broker_symbol=broker_quote.symbol)

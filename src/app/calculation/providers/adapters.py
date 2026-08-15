@@ -56,6 +56,26 @@ class _ExpiryManagerLike(Protocol):
         expiry_date: date,
     ) -> int: ...
 
+    def nearest_expiry(
+        self,
+        underlying: str,
+        exchange: str,
+        *,
+        on_date: date,
+        expiry_type: Any = None,
+    ) -> Any: ...
+
+
+# The calculation layer speaks the broker-facing derivatives exchange code
+# ("NFO"), while ExpiryService (app.market) speaks its own ExchangeCode
+# ("NSEFO") -- this adapter is the boundary, so the translation belongs here
+# rather than leaking either convention into the other layer.
+_MARKET_EXCHANGE_CODE: dict[str, str] = {"NFO": "NSEFO", "BFO": "BSEFO"}
+
+
+def _market_exchange_code(exchange: str) -> str:
+    return _MARKET_EXCHANGE_CODE.get(exchange.strip().upper(), exchange)
+
 
 class _MarketCalendarLike(Protocol):
     """Minimal market calendar surface."""
@@ -136,6 +156,24 @@ class ExpiryCalendarPortAdapter:
     ) -> int:
         """Return seconds to expiry."""
         return self._expiry.calculate_tte(exchange, now, expiry_date)
+
+    def nearest_monthly_expiry(
+        self,
+        underlying: str,
+        exchange: str,
+        on_date: date,
+    ) -> date | None:
+        """Return the nearest monthly futures expiry, independent of any
+        weekly option expiry for the same underlying/exchange."""
+        from app.market.enums import ExpiryType
+
+        record = self._expiry.nearest_expiry(
+            underlying,
+            _market_exchange_code(exchange),
+            on_date=on_date,
+            expiry_type=ExpiryType.MONTHLY,
+        )
+        return record.expiry_date if record is not None else None
 
 
 class MarketStatusPortAdapter:

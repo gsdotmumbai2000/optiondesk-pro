@@ -114,7 +114,6 @@ class BreezeOptionChain:
             total=len(rows),
             sample_keys=sorted(rows[0].keys()) if rows else [],
         )
-        logger.debug("Option chain normalizer starting: row_count={count}", count=len(rows))
         chain = normalize_option_chain(
             request.underlying,
             request.exchange,

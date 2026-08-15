@@ -45,3 +45,12 @@ class ExpiryProvider:
         """Return fractional year time to expiry."""
         seconds = self._calendar.calculate_tte_seconds(exchange, now, expiry_date)
         return calculate_fractional_year(seconds)
+
+    def nearest_monthly_expiry(
+        self,
+        underlying: str,
+        exchange: str,
+        on_date: date,
+    ) -> date | None:
+        """Return the nearest monthly futures expiry for an underlying."""
+        return self._calendar.nearest_monthly_expiry(underlying, exchange, on_date)

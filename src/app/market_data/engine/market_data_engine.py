@@ -9,7 +9,6 @@ from app.events.event_bus import EventBus
 from app.logging.logging_manager import get_logger
 from app.market_data.cache.keys import quote_key
 from app.market_data.cache.market_cache import MarketCache
-from app.market_data.diagnostics import is_index_related_text
 from app.market_data.events import QuoteUpdatedEvent as MdQuoteUpdatedEvent
 from app.market_data.history.history_manager import HistoryManager
 from app.market_data.models import MarketStatistics, Quote
@@ -107,26 +106,8 @@ class MarketDataEngine:
         self._workers.cleanup.submit(self._cleanup_task)
 
     def _process_quote(self, quote: Quote) -> None:
-        # TEMPORARY DIAGNOSTIC (NIFTY spot-unavailable trace) - boundary 3b:
-        # MarketDataEngine.MarketCache quote-cache insertion, cash/index-related quotes only.
-        is_index_cash = is_index_related_text(quote.symbol) and quote.instrument_kind.value != "OPTION"
-        if is_index_cash:
-            logger.debug(
-                "[DIAG-3B ENGINE-CACHE-PRE] exchange={exchange!r} symbol={symbol!r} "
-                "instrument_kind={instrument_kind!r} ltp={ltp!r}",
-                exchange=quote.exchange,
-                symbol=quote.symbol,
-                instrument_kind=quote.instrument_kind.value,
-                ltp=quote.ltp,
-            )
         self._validator.validate_quote(quote)
         self._cache.put_quote(quote)
-        if is_index_cash:
-            logger.debug(
-                "[DIAG-3B ENGINE-CACHE-POST] cache_key={cache_key!r} stored={stored!r}",
-                cache_key=quote_key(quote.exchange, quote.symbol),
-                stored=True,
-            )
         key = quote_key(quote.exchange, quote.symbol)
         self._history.add_quote(key, quote)
         self._publisher.publish_quote(quote)

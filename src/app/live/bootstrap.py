@@ -11,6 +11,7 @@ from app.live.cache.greeks_cache import LiveGreeksCache
 from app.live.cache.option_cache import LiveOptionCache
 from app.live.cache.portfolio_cache import LivePortfolioCache
 from app.live.cache.risk_cache import LiveRiskCache
+from app.live.calculations.active_strategy_adapter import ActiveStrategyAdapter
 from app.live.calculations.context_builder import LiveContextBuilder
 from app.live.calculations.market_query_adapter import LiveMarketQueryAdapter
 from app.live.calculations.pipeline import LiveCalculationPipeline
@@ -26,7 +27,9 @@ from app.market_data.services.market_data_service import MarketDataService
 from app.strategy.providers.bundle_factory import build_engine_bundle
 
 if TYPE_CHECKING:
+    from app.application.cache.workspace_cache import WorkspaceCache
     from app.application.registry.engine_registry import EngineRegistry
+    from app.application.session.session_manager import SessionManager
 
 
 class LiveAnalyticsProvider:
@@ -39,6 +42,8 @@ class LiveAnalyticsProvider:
         engines: EngineRegistry | Any,
         *,
         refresh_mode: RefreshMode = RefreshMode.MS_500,
+        sessions: SessionManager | None = None,
+        workspace_cache: WorkspaceCache | None = None,
     ) -> None:
         self._event_bus = event_bus
         self._option_cache = LiveOptionCache()
@@ -48,7 +53,14 @@ class LiveAnalyticsProvider:
         query_adapter = LiveMarketQueryAdapter(market_data, self._option_cache)
         calculation = self._build_calculation_provider(query_adapter, engines)
         chain_manager = OptionChainManager(self._option_cache)
-        context_builder = LiveContextBuilder(calculation.engine.contexts, chain_manager)
+        active_strategy = (
+            ActiveStrategyAdapter(sessions, workspace_cache)
+            if sessions is not None and workspace_cache is not None
+            else None
+        )
+        context_builder = LiveContextBuilder(
+            calculation.engine.contexts, chain_manager, active_strategy
+        )
         pipeline = LiveCalculationPipeline(build_engine_bundle(event_bus), context_builder)
         chain_service = LiveOptionChainService(chain_manager, self._option_cache)
         dispatcher = CalculationDispatcher(max_workers=4)

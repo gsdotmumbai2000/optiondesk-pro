@@ -43,7 +43,13 @@ class ApplicationProvider:
         self.sessions = SessionManager()
         self.market_data_service = market_data.service if market_data is not None else None
         self.live_analytics_provider = (
-            LiveAnalyticsProvider(event_bus, self.market_data_service, self.engines)
+            LiveAnalyticsProvider(
+                event_bus,
+                self.market_data_service,
+                self.engines,
+                sessions=self.sessions,
+                workspace_cache=self.cache,
+            )
             if event_bus is not None and self.market_data_service is not None
             else None
         )

@@ -98,7 +98,10 @@ class CalculationContextFactory:
         trade_date = self._time.trade_date(now)
         expiry_date = self._expiry.parse_expiry(expiry)
         spot = self._snapshots.spot(info.underlying_symbol, cash_exchange_for(info.exchange))
-        future = self._snapshots.future(info.underlying_symbol, info.exchange, expiry)
+        future_expiry = self._resolve_future_expiry(
+            info.underlying_symbol, info.exchange, trade_date, fallback=expiry
+        )
+        future = self._snapshots.future(info.underlying_symbol, info.exchange, future_expiry)
         chain = self._snapshots.option_chain(info.underlying_symbol, info.exchange, expiry)
         session = self._market_status.session(info.exchange, now)
         return self._build_context(
@@ -112,6 +115,25 @@ class CalculationContextFactory:
             session=session,
             configuration=configuration,
         )
+
+    def _resolve_future_expiry(
+        self, underlying: str, exchange: str, trade_date: date, *, fallback: str
+    ) -> str:
+        """Resolve the futures contract's own (monthly) expiry, independent
+        of the option chain's (weekly) expiry passed into this context.
+
+        NIFTY-family futures expire monthly while their options expire
+        weekly, so the two are not the same contract date and must not
+        share a lookup key (see Task 9/10: get_future() silently missed
+        every live futures tick because it reused the weekly expiry).
+        Falls back to the option expiry if no monthly expiry is resolvable
+        for this underlying (e.g. no futures market for it), matching prior
+        behavior rather than failing the whole context.
+        """
+        monthly = self._expiry.nearest_monthly_expiry(underlying, exchange, trade_date)
+        if monthly is None:
+            return fallback
+        return monthly.strftime("%d-%b-%Y")
 
     def _build_context(
         self,

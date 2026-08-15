@@ -49,6 +49,13 @@ class IExpiryCalendarPort(Protocol):
         expiry_date: date,
     ) -> int: ...
 
+    def nearest_monthly_expiry(
+        self,
+        underlying: str,
+        exchange: str,
+        on_date: date,
+    ) -> date | None: ...
+
 
 class IMarketStatusPort(Protocol):
     """Read-only market status access."""

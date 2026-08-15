@@ -111,7 +111,8 @@ class MarketViewModel(BaseViewModel):
             self._option_chain_underlying = str(data.get("underlying", underlying))
             self._option_chain_exchange = str(data.get("exchange", exchange))
             self._option_chain_expiry = str(data.get("expiry_date", ""))
-            self.option_chain_changed.emit(self._rows_from_rest_strikes(data.get("strikes", [])))
+            rows = self._rows_from_rest_strikes(data.get("strikes", []))
+            self.option_chain_changed.emit(rows)
             logger.debug("UI result emitted: option_chain_changed")
             self.status_message = result.message
             logger.info(

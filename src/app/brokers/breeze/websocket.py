@@ -158,7 +158,7 @@ class BreezeWebSocket:
             logger.warning("Breeze client does not expose on_ticks callback property")
             return
         current = getattr(self._client, "on_ticks", None)
-        if current is self._on_sdk_ticks:
+        if current == self._on_sdk_ticks:
             return
         setattr(self._client, "on_ticks", self._on_sdk_ticks)
         logger.info("Breeze on_ticks callback registered on SDK client")

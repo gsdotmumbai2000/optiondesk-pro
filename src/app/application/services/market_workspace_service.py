@@ -12,7 +12,7 @@ from app.application.services.live_analytics_support import LiveAnalyticsSupport
 from app.application.session.session_manager import SessionManager
 from app.brokers.shared.enums import ProductType
 from app.logging.logging_manager import get_logger
-from app.market.enums import ExchangeCode
+from app.market.enums import ExchangeCode, ExpiryType
 from app.market_data.models.snapshot import MarketSnapshot
 from app.market_data.services.market_data_service import MarketDataService
 
@@ -206,6 +206,19 @@ class MarketWorkspaceService(LiveAnalyticsSupport):
         expiry_date = expiry_record.expiry_date.strftime("%d-%b-%Y")
         logger.debug("initial_option_chain: expiry resolved expiry_date={expiry_date}", expiry_date=expiry_date)
 
+        future_expiry_record = expiry_service.nearest_expiry(
+            underlying,
+            ExchangeCode.NSEFO.value,
+            on_date=date.today(),
+            expiry_type=ExpiryType.MONTHLY,
+        )
+        if future_expiry_record is not None:
+            self._subscribe_future(
+                underlying,
+                exchange,
+                future_expiry_record.expiry_date.strftime("%d-%b-%Y"),
+            )
+
         logger.debug("initial_option_chain: calling market_data.get_option_chain")
         chain = self._market_data.get_option_chain(underlying, exchange, expiry_date)
         logger.debug("initial_option_chain: market_data.get_option_chain returned")
@@ -262,6 +275,47 @@ class MarketWorkspaceService(LiveAnalyticsSupport):
             f"Option chain for {underlying} {expiry_date} ({len(windowed)} strikes)",
             payload,
         )
+
+    def _subscribe_future(self, underlying: str, exchange: str, expiry_date: str) -> None:
+        """Subscribe the live futures feed for the underlying's futures expiry.
+
+        `expiry_date` here is the *monthly* futures expiry, resolved
+        separately from the option chain's weekly `expiry_date` above --
+        NIFTY-family futures and options do not share an expiry cycle, so
+        reusing the weekly value made every futures subscription request an
+        expiry Breeze has no contract for (Task 10).
+
+        Calculation contexts require a future quote (MarketSnapshotBuilder.future
+        -> LiveMarketQueryAdapter.get_future) independent of the option strike
+        window below, so this must not be gated on `window` being non-empty.
+        Deduplication is handled by SubscriptionService's own identity key
+        (exchange:symbol:product_type:expiry:strike:right), so repeated calls
+        for the same underlying/exchange/expiry are safe no-ops at the broker.
+
+        A broker-level subscribe failure (e.g. no futures contract exists at
+        this expiry) must not abort the rest of initial_option_chain() — the
+        REST chain fetch and option-window subscription below have no
+        dependency on this succeeding, and SubscriptionService.subscribe()
+        does not itself guard against the broker call raising.
+        """
+        if self._market_data is None:
+            return
+        try:
+            self._market_data.subscribe(
+                underlying,
+                exchange,
+                product_type=ProductType.FUTURES,
+                expiry_date=expiry_date,
+            )
+        except Exception as error:
+            logger.warning(
+                "initial_option_chain: future subscription failed for "
+                "{underlying}@{exchange} expiry_date={expiry_date}: {error}",
+                underlying=underlying,
+                exchange=exchange,
+                expiry_date=expiry_date,
+                error=error,
+            )
 
     def _subscribe_option_window(
         self,

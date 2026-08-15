@@ -70,7 +70,7 @@ def test_sdk_callback_wrapper_is_registered() -> None:
     received: list[Any] = []
     websocket.set_quote_handler(received.append)
 
-    assert client.on_ticks is websocket._on_sdk_ticks
+    assert client.on_ticks == websocket._on_sdk_ticks
     client.on_ticks({"stock_code": "NIFTY"})
     assert received == [{"stock_code": "NIFTY"}]
 
