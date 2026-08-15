@@ -18,6 +18,7 @@ class StrategyBuilderView(QWidget):
         btn_row = QHBoxLayout()
         for label, cmd in (
             ("Evaluate", viewmodel.evaluate_command),
+            ("Refresh Margin", viewmodel.refresh_margin_command),
             ("Optimize", viewmodel.optimize_command),
             ("Save", viewmodel.save_command),
             ("Load", viewmodel.load_command),
@@ -30,6 +31,8 @@ class StrategyBuilderView(QWidget):
         root.addWidget(self._leg_table)
         self._summary = QLabel("Strategy summary placeholder")
         root.addWidget(self._summary)
+        self._margin_summary = QLabel(viewmodel.margin_summary)
+        root.addWidget(self._margin_summary)
         charts = QGridLayout()
         charts.addWidget(payoff_chart(), 0, 0)
         charts.addWidget(greeks_chart(), 0, 1)
@@ -37,3 +40,4 @@ class StrategyBuilderView(QWidget):
         prob = QLabel("Probability summary — from engine results")
         root.addWidget(prob)
         viewmodel.summary_changed.connect(self._summary.setText)
+        viewmodel.margin_summary_changed.connect(self._margin_summary.setText)

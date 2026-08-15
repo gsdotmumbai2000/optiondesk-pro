@@ -97,6 +97,43 @@ class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMar
             request = replace(request, broker_response=broker_response)
         return self.evaluate_strategy(session_id, request)
 
+    def refresh_margin(
+        self,
+        session_id: str,
+        exchange: str = "NFO",
+    ) -> WorkspaceOperationResult:
+        """Return real broker margin for the strategy currently active in
+        this session's Trading workspace. Does not require a full strategy
+        evaluation request -- looks up the active strategy's legs directly
+        from session/cache state, the same source the live pipeline uses.
+
+        WorkspaceOperationResult.success is False (with an explanatory
+        message, not real broker data) when there's no active strategy or
+        no broker margin source is available -- callers should treat that
+        as "keep showing the estimated margin", not as an error."""
+        session = self._sessions.get(session_id)
+        strategy_id = next(
+            (w.entity_id for w in session.workspaces if w.workspace == WorkspaceType.TRADING and w.entity_id),
+            "",
+        )
+        if not strategy_id:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, "No active strategy to refresh margin for",
+            )
+        strategy = self._cache.get_strategy(strategy_id)
+        if strategy is None:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, f"Strategy not found: {strategy_id}",
+            )
+        broker_response = self.broker_margin(strategy.legs, exchange)
+        if broker_response is None:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, "Broker margin unavailable — showing estimate",
+            )
+        return WorkspaceOperationResult(
+            True, WorkspaceType.TRADING, "Broker margin refreshed", broker_response,
+        )
+
     def optimize_strategy(
         self,
         session_id: str,

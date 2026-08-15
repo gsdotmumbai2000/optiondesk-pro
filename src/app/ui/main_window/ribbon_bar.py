@@ -20,6 +20,7 @@ def build_ribbon(
         ("Save", trading_vm.save_command),
         ("Refresh", trading_vm.refresh_command),
         ("Evaluate", trading_vm.evaluate_command),
+        ("Refresh Margin", trading_vm.refresh_margin_command),
         ("Optimize", trading_vm.optimize_command),
         ("Backtest", backtest_vm.run_command),
         ("AI", trading_vm.recommend_command),
