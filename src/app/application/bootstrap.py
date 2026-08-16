@@ -1,5 +1,7 @@
 """Application services layer bootstrap."""
 
+from pathlib import Path
+
 from app.application.cache.workspace_cache import WorkspaceCache
 from app.application.commands.command_dispatcher import CommandDispatcher
 from app.application.navigation.navigation_service import NavigationService
@@ -35,10 +37,11 @@ class ApplicationProvider:
         market_data: MarketDataProvider | None = None,
         broker_provider: BrokerProvider | None = None,
         connection_status: ConnectionStatusService | None = None,
+        data_directory: Path | None = None,
     ) -> None:
         """Initialize application provider."""
         self.event_bus = event_bus
-        self.engines = build_engine_registry(event_bus, market_data)
+        self.engines = build_engine_registry(event_bus, market_data, data_directory)
         self.validator = ApplicationValidator()
         self.cache = WorkspaceCache()
         self.sessions = SessionManager()

@@ -23,10 +23,10 @@ def build_engine_registry(
     """Wire all frozen engine providers."""
     data_dir = data_directory or (RESOURCES_DIR / "data")
     return EngineRegistry(
-        strategy=StrategyProvider(event_bus),
+        strategy=StrategyProvider(event_bus, data_directory=data_dir),
         optimizer=OptimizerProvider(event_bus),
-        backtest=BacktestProvider(event_bus),
-        portfolio=PortfolioProvider(event_bus),
+        backtest=BacktestProvider(event_bus, data_directory=data_dir),
+        portfolio=PortfolioProvider(event_bus, data_directory=data_dir),
         monitor=MonitorProvider(event_bus),
         ai=AIProvider(event_bus),
         market_master=MarketMasterProvider(data_dir, event_bus),

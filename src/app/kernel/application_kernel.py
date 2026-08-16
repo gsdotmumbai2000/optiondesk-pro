@@ -96,11 +96,14 @@ class ApplicationKernel:
         self.service_registry.start_all()
         self.workspace_manager.load_active_profile()
 
+        assert self.configuration_manager is not None
+        data_dir = Path(self.configuration_manager.configuration.application.data_directory)
         self._desktop_application = DesktopApplication(
             event_bus=self.event_bus,
             broker_provider=self.broker_provider,
             connection_status=self._connection_status,
             market_data=self.market_data_provider,
+            data_directory=data_dir,
         )
         self._running = True
         self.event_bus.publish(

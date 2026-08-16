@@ -1,5 +1,7 @@
 """Desktop application bootstrap."""
 
+from pathlib import Path
+
 from app.application.bootstrap import ApplicationProvider
 from app.brokers.bootstrap import BrokerProvider
 from app.events.event_bus import EventBus
@@ -23,6 +25,7 @@ class DesktopApplication:
         broker_provider: BrokerProvider | None = None,
         connection_status: ConnectionStatusService | None = None,
         market_data: MarketDataProvider | None = None,
+        data_directory: Path | None = None,
     ) -> None:
         """Initialize desktop application."""
         self._event_bus = event_bus
@@ -31,6 +34,7 @@ class DesktopApplication:
             broker_provider=broker_provider,
             connection_status=connection_status,
             market_data=market_data,
+            data_directory=data_directory,
         )
         self._theme = ThemeManager()
         self._worker = BackgroundWorker()
