@@ -129,11 +129,11 @@ def _reference_greeks(
     pdf_d1 = pdf(d1)
 
     gamma = pdf_d1 / (spot * vol * sqrt_t) * growth
-    vega = spot * growth * pdf_d1 * sqrt_t
+    vega_raw = spot * growth * pdf_d1 * sqrt_t
 
     if option_type == OptionType.CALL:
         delta = cdf(d1) * growth
-        theta = (
+        theta_annual = (
             -spot * growth * pdf_d1 * vol / (2 * sqrt_t)
             - rate * strike * discount * cdf(d2)
             + dividend * spot * growth * cdf(d1)
@@ -141,12 +141,18 @@ def _reference_greeks(
         rho = strike * t * discount * cdf(d2)
     else:
         delta = (cdf(d1) - 1.0) * growth
-        theta = (
+        theta_annual = (
             -spot * growth * pdf_d1 * vol / (2 * sqrt_t)
             + rate * strike * discount * cdf(-d2)
             - dividend * spot * growth * cdf(-d1)
         )
         rho = -strike * t * discount * cdf(-d2)
+
+    # Production reports theta per calendar day and vega per 1% vol move,
+    # not the raw per-year / per-100%-vol textbook derivatives -- see
+    # app/greeks/analytics/bs_greeks.py.
+    theta = theta_annual / 365.0
+    vega = vega_raw / 100.0
 
     return {"delta": delta, "gamma": gamma, "theta": theta, "vega": vega, "rho": rho}
 
@@ -281,6 +287,72 @@ class TestMultiplierScaling:
         assert float(scaled.delta) == pytest.approx(float(base.delta) * 75, rel=1e-6)
         assert float(scaled.gamma) == pytest.approx(float(base.gamma) * 75, rel=1e-6)
         assert float(scaled.vega) == pytest.approx(float(base.vega) * 75, rel=1e-6)
+
+
+class TestThetaVegaTraderScaling:
+    """theta/vega must be the conventional trader-facing units (per
+    calendar day / per 1% vol), not the raw per-year / per-100%-vol
+    textbook derivatives -- confirmed against a real live NIFTY option
+    where the raw annualized theta (~-11,067) was nonsensical next to the
+    real ~-30/day decay a trader would recognize.
+    """
+
+    def test_theta_equals_raw_annualized_theta_over_365(self) -> None:
+        """Computes the raw (unscaled) annualized theta independently --
+        not via _reference_greeks, which already bakes in the /365 -- to
+        directly prove the specific division factor, not just "matches
+        the reference helper" (which would pass even if both sides shared
+        a wrong factor)."""
+        context = _context()
+        contract = _contract(Decimal("100"), OptionType.CALL)
+        spot, strike, rate, dividend, vol = 100.0, 100.0, 0.05, 0.0, 0.20
+        t = float(context.time_to_expiry)
+
+        def cdf(x: float) -> float:
+            return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+        def pdf(x: float) -> float:
+            return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
+
+        d1 = (math.log(spot / strike) + (rate - dividend + 0.5 * vol * vol) * t) / (vol * math.sqrt(t))
+        d2 = d1 - vol * math.sqrt(t)
+        raw_theta_annual = (
+            -spot * pdf(d1) * vol / (2 * math.sqrt(t)) - rate * strike * math.exp(-rate * t) * cdf(d2)
+        )
+
+        actual = _actual_greeks(context, contract)
+
+        assert float(actual.theta) == pytest.approx(raw_theta_annual / 365.0, rel=1e-3)
+
+    def test_short_dated_theta_is_a_realistic_small_number_not_thousands(self) -> None:
+        """Regression guard for the exact real-world scenario that exposed
+        the bug: a 2-day-to-expiry near-ATM option's daily theta should be
+        a two- or three-digit number (per unit, before lot size), never
+        the four/five-digit annualized figure the old code produced."""
+        context = replace(_context(), time_to_expiry=Decimal("2") / Decimal("365"))
+        contract = _contract(Decimal("100"), OptionType.CALL)
+
+        greeks = _actual_greeks(context, contract)
+
+        assert abs(float(greeks.theta)) < 50
+
+    def test_vega_equals_raw_vega_over_100(self) -> None:
+        """Same independent-derivation approach as the theta test above,
+        to directly prove the /100 factor."""
+        context = _context()
+        contract = _contract(Decimal("100"), OptionType.CALL)
+        spot, strike, rate, dividend, vol = 100.0, 100.0, 0.05, 0.0, 0.20
+        t = float(context.time_to_expiry)
+
+        def pdf(x: float) -> float:
+            return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
+
+        d1 = (math.log(spot / strike) + (rate - dividend + 0.5 * vol * vol) * t) / (vol * math.sqrt(t))
+        raw_vega = spot * pdf(d1) * math.sqrt(t)
+
+        actual = _actual_greeks(context, contract)
+
+        assert float(actual.vega) == pytest.approx(raw_vega / 100.0, rel=1e-3)
 
 
 def _dummy_pricing():

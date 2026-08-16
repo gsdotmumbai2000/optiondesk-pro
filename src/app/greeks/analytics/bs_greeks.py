@@ -1,4 +1,17 @@
-"""Black-Scholes Greeks formulas."""
+"""Black-Scholes Greeks formulas.
+
+theta and vega are reported in the conventional trader-facing units, not
+the raw textbook per-year / per-100%-vol derivatives: theta is scaled to
+value change per calendar day (raw / 365), vega to value change per 1%
+(0.01) change in volatility (raw / 100). Confirmed live against a real
+2-day-to-expiry NIFTY option that the raw annualized theta (~-11,067) is
+wildly misleading next to the real ~-30/day decay a trader would
+recognize; every mainstream options platform (Zerodha, Sensibull,
+Bloomberg) shows theta/vega in these scaled units. vanna/charm/vomma stay
+in their raw textbook units -- vomma's formula needs vega's raw (per-100%)
+form to be dimensionally correct, and none of the three have been
+validated against a real-money reference the way theta/vega just were.
+"""
 
 import math
 
@@ -51,8 +64,8 @@ def calculate_bs_greeks(
     discount = math.exp(-rate * time_to_expiry)
 
     gamma = pdf_d1 / (spot * volatility * sqrt_t) * growth
-    vega = spot * growth * pdf_d1 * sqrt_t
-    vomma = vega * d1 * d2 / volatility if volatility > 0 else 0.0
+    vega_raw = spot * growth * pdf_d1 * sqrt_t  # per 1.00 (100%) change in volatility
+    vomma = vega_raw * d1 * d2 / volatility if volatility > 0 else 0.0
     vanna = -pdf_d1 * d2 / volatility if volatility > 0 else 0.0
     charm = -pdf_d1 * (
         (2 * (rate - dividend) * time_to_expiry - d2 * volatility * sqrt_t)
@@ -61,7 +74,7 @@ def calculate_bs_greeks(
 
     if contract.option_type == OptionType.CALL:
         delta = normal_cdf(d1) * growth
-        theta = (
+        theta_annual = (
             -spot * growth * pdf_d1 * volatility / (2 * sqrt_t)
             - rate * strike * discount * normal_cdf(d2)
             + dividend * spot * growth * normal_cdf(d1)
@@ -69,19 +82,26 @@ def calculate_bs_greeks(
         rho = strike * time_to_expiry * discount * normal_cdf(d2)
     else:
         delta = (normal_cdf(d1) - 1.0) * growth
-        theta = (
+        theta_annual = (
             -spot * growth * pdf_d1 * volatility / (2 * sqrt_t)
             + rate * strike * discount * normal_cdf(-d2)
             - dividend * spot * growth * normal_cdf(-d1)
         )
         rho = -strike * time_to_expiry * discount * normal_cdf(-d2)
 
+    theta = theta_annual / 365.0  # per calendar day
+    vega = vega_raw / 100.0  # per 1% (0.01) change in volatility
+
     scale = to_decimal(multiplier)
     return GreeksResult(
         delta=to_decimal(delta) * scale,
         gamma=to_decimal(gamma) * scale,
-        theta=to_decimal(theta) * scale,
-        vega=to_decimal(vega) * scale,
+        # Scaled down (per-day / per-1%-vol) values are commonly sub-cent
+        # before the lot-size multiplier; quantizing them at the same 4dp
+        # as the other Greeks before multiplying would compound a rounding
+        # error up by the multiplier, so keep more precision here.
+        theta=to_decimal(theta, places="0.000001") * scale,
+        vega=to_decimal(vega, places="0.000001") * scale,
         rho=to_decimal(rho) * scale,
         vanna=to_decimal(vanna) * scale,
         charm=to_decimal(charm) * scale,
