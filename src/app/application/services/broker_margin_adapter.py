@@ -50,6 +50,8 @@ class BrokerMarginAdapter:
         try:
             orders = [self._to_order_request(leg, exchange) for leg in legs]
             margins = broker.calculate_margin(orders, exchange)
+            if margins is None:
+                return None
             funds = broker.get_funds()
         except (BrokerNotSupportedException, BrokerException):
             return None

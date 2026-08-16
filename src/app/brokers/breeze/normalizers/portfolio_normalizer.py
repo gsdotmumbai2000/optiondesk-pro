@@ -62,19 +62,28 @@ def normalize_holdings(response: dict[str, Any]) -> list[Holding]:
 
 
 def normalize_positions(response: dict[str, Any]) -> list[Position]:
-    """Convert positions response to domain positions."""
+    """Convert positions response to domain positions.
+
+    Breeze reports quantity as an always-positive magnitude alongside a
+    separate "action" field ("Buy"/"Sell") -- confirmed live against a real
+    account (a Buy leg and a Sell leg both reported quantity="195"). Sign
+    the quantity here so Position.quantity matches this codebase's
+    convention (negative = short) instead of silently discarding direction.
+    """
     data = unwrap_success(response)
     rows = data if isinstance(data, list) else []
     positions: list[Position] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
+        magnitude = abs(to_int(row.get("quantity")) or 0)
+        is_short = str(row.get("action", "")).strip().lower() == "sell"
         positions.append(
             Position(
                 symbol=str(row.get("stock_code", "")),
                 exchange=str(row.get("exchange_code", "")),
                 product_type=str(row.get("product_type", "")),
-                quantity=to_int(row.get("quantity")) or 0,
+                quantity=-magnitude if is_short else magnitude,
                 average_price=to_decimal(row.get("average_price")) or Decimal("0"),
                 ltp=to_decimal(row.get("ltp")),
                 mtm=to_decimal(row.get("mtm")),

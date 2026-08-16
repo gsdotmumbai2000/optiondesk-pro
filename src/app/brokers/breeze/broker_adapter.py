@@ -261,7 +261,7 @@ class BreezeBrokerAdapter(BrokerInterface):
 
     def calculate_margin(
         self, positions: list[OrderRequest], exchange_code: str
-    ) -> Margins:
+    ) -> Margins | None:
         self._ensure_session()
         return self._margin.calculate_margin(positions, exchange_code)
 

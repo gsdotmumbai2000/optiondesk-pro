@@ -17,8 +17,9 @@ class BreezeMargin:
 
     def calculate_margin(
         self, positions: list[OrderRequest], exchange_code: str
-    ) -> Margins:
-        """Return normalized margin for a basket of positions."""
+    ) -> Margins | None:
+        """Return normalized margin for a basket of positions, or None when
+        Breeze didn't actually compute one (see normalize_margin)."""
         payload = [self._position_payload(order) for order in positions]
         response = self._client.margin_calculator(payload, exchange_code.lower())
         return normalize_margin(unwrap_success(response), exchange_code)

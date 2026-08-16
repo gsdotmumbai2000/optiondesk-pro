@@ -6,7 +6,14 @@ from pydantic import BaseModel, Field
 
 
 class Position(BaseModel):
-    """Normalized open position."""
+    """Normalized open position.
+
+    `quantity` is signed: positive for a long (Buy) position, negative for
+    a short (Sell) position -- matching the convention used elsewhere in
+    this codebase (e.g. StrategyLeg.quantity), not Breeze's own raw
+    response, which reports an always-positive quantity alongside a
+    separate "action" field.
+    """
 
     symbol: str
     exchange: str

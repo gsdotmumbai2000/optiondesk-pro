@@ -131,8 +131,10 @@ class BrokerInterface(ABC):
     @abstractmethod
     def calculate_margin(
         self, positions: list[OrderRequest], exchange_code: str
-    ) -> Margins:
-        """Return real pre-trade margin for a basket of positions."""
+    ) -> Margins | None:
+        """Return real pre-trade margin for a basket of positions, or None
+        when the broker didn't actually compute one (e.g. no SPAN data
+        available for the request)."""
 
     @abstractmethod
     def health(self) -> BrokerHealth:

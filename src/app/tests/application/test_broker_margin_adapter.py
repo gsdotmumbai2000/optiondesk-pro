@@ -47,6 +47,7 @@ class _FakeBroker:
         self.funds_response = Funds(available_cash=Decimal("50000"), total_balance=Decimal("100000"))
         self.margin_error: Exception | None = None
         self.broker_code = BrokerCode.BREEZE
+        self.get_funds_called = False
 
     def is_connected(self) -> bool:
         return self._connected
@@ -59,6 +60,7 @@ class _FakeBroker:
         return self.margin_response
 
     def get_funds(self) -> Funds:
+        self.get_funds_called = True
         return self.funds_response
 
 
@@ -86,6 +88,21 @@ class TestBrokerMarginAdapterGuardConditions:
         leg = _leg(LegKind.CALL_SELL, 75)
 
         assert adapter.calculate_margin((leg,), "NFO") is None
+
+    def test_broker_returns_none_margin_propagates_as_none_without_calling_get_funds(self) -> None:
+        """When calculate_margin() itself returns None (Breeze had no real
+        margin to report -- see normalize_margin), the adapter must not
+        treat that as success: no get_funds() call, no fabricated
+        BrokerMarginResponse with a misleading 0."""
+        broker = _FakeBroker()
+        broker.margin_response = None
+        adapter = _adapter(broker)
+        leg = _leg(LegKind.CALL_SELL, 75)
+
+        result = adapter.calculate_margin((leg,), "NFO")
+
+        assert result is None
+        assert broker.get_funds_called is False
 
     def test_broker_exception_returns_none_not_raises(self) -> None:
         broker = _FakeBroker()

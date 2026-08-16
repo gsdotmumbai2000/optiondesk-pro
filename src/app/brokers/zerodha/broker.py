@@ -116,7 +116,7 @@ class ZerodhaBroker(BrokerInterface):
 
     def calculate_margin(
         self, positions: list[OrderRequest], exchange_code: str
-    ) -> Margins:
+    ) -> Margins | None:
         self._unsupported()
 
     def health(self) -> BrokerHealth:

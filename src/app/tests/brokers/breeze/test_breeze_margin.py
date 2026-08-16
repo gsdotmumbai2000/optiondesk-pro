@@ -43,12 +43,41 @@ class TestNormalizeMargin:
 
         assert margins.total_margin == Decimal("15000")
 
-    def test_missing_fields_default_to_zero(self) -> None:
-        margins = normalize_margin({}, "NFO")
+    def test_present_but_zero_span_is_a_real_zero_not_unavailable(self) -> None:
+        """A genuinely present "0" (not null) is a real computed answer,
+        distinct from the null case below."""
+        payload = {"span_margin_required": "0", "non_span_margin_required": "0", "order_margin": "0"}
 
+        margins = normalize_margin(payload, "NFO")
+
+        assert margins is not None
         assert margins.span_margin == Decimal("0")
-        assert margins.exposure_margin == Decimal("0")
         assert margins.total_margin == Decimal("0")
+
+
+class TestNormalizeMarginUnavailable:
+    """Confirmed live against a real account on a non-trading day: Breeze
+    returned span_margin_required=null (order_margin="0", not null) for a
+    real, correctly-formed position -- the request was understood (a real
+    order_value came back) but no margin was actually computed. Treating
+    that as a confident "0 margin required" would be actively misleading,
+    not just incomplete.
+    """
+
+    def test_null_span_margin_required_returns_none(self) -> None:
+        payload = {
+            "non_span_margin_required": "0",
+            "order_value": "477816.11",
+            "order_margin": "0",
+            "trade_margin": "0",
+            "block_trade_margin": "0",
+            "span_margin_required": None,
+        }
+
+        assert normalize_margin(payload, "NFO") is None
+
+    def test_missing_span_margin_required_key_returns_none(self) -> None:
+        assert normalize_margin({}, "NFO") is None
 
 
 class _RecordingMarginClient:
@@ -136,6 +165,25 @@ class TestBreezeMarginCalculateMargin:
             "fresh_limit_rate": "",
             "open_quantity": "",
         }]
+
+    def test_returns_none_when_breeze_reports_no_span_margin(self) -> None:
+        client = _RecordingMarginClient({
+            "Success": {
+                "non_span_margin_required": "0",
+                "order_value": "477816.11",
+                "order_margin": "0",
+                "span_margin_required": None,
+            },
+            "Status": 200,
+            "Error": None,
+        })
+        margin = BreezeMargin(client)
+        order = OrderRequest(
+            symbol="NIFTY", exchange="NFO", product_type=ProductType.OPTIONS,
+            side=OrderSide.BUY, order_type=OrderType.MARKET, quantity=195,
+        )
+
+        assert margin.calculate_margin([order], "NFO") is None
 
     def test_multiple_positions_are_all_included_in_the_basket(self) -> None:
         client = _RecordingMarginClient(self._success_response())
