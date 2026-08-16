@@ -21,7 +21,10 @@ class PortfolioView(QWidget):
         grid.addWidget(self._positions, 0, 0)
         grid.addWidget(self._holdings, 0, 1)
         layout.addLayout(grid)
-        layout.addWidget(pnl_chart())
+        # Ready for real portfolio PnL history via self._pnl_chart.set_series()
+        # once PortfolioViewModel exposes it (currently only a text summary).
+        self._pnl_chart = pnl_chart(title="Portfolio PnL")
+        layout.addWidget(self._pnl_chart)
         metrics = QGridLayout()
         for i, title in enumerate(("PnL", "Margin", "Risk", "Allocation")):
             metrics.addWidget(SectionHeader(title), 0, i)

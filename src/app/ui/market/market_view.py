@@ -34,7 +34,12 @@ class MarketView(QWidget):
         top.addWidget(self._wrap("Indices", self._indices))
         layout.addLayout(top)
         mid = QHBoxLayout()
-        mid.addWidget(volatility_chart())
+        # Ready for real chain data via self._volatility_chart.set_chain()
+        # once wired to a raw OptionChainSnapshot -- option_chain_changed
+        # currently only carries pre-formatted display rows, not the
+        # snapshot the chart needs.
+        self._volatility_chart = volatility_chart()
+        mid.addWidget(self._volatility_chart)
         mid.addWidget(price_chart())
         layout.addLayout(mid)
         self._chain = OptionChainView()

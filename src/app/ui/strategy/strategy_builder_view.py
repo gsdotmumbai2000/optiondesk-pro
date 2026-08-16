@@ -34,8 +34,14 @@ class StrategyBuilderView(QWidget):
         self._margin_summary = QLabel(viewmodel.margin_summary)
         root.addWidget(self._margin_summary)
         charts = QGridLayout()
-        charts.addWidget(payoff_chart(), 0, 0)
-        charts.addWidget(greeks_chart(), 0, 1)
+        # Real chart widgets, ready for evaluate_command's PayoffResult/
+        # GreeksResult via self._payoff_chart.set_curve()/
+        # self._greeks_chart.set_greeks() once that command builds a real
+        # StrategyEvaluationRequest instead of its current placeholder.
+        self._payoff_chart = payoff_chart()
+        self._greeks_chart = greeks_chart()
+        charts.addWidget(self._payoff_chart, 0, 0)
+        charts.addWidget(self._greeks_chart, 0, 1)
         root.addLayout(charts)
         prob = QLabel("Probability summary — from engine results")
         root.addWidget(prob)
