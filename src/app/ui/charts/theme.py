@@ -1,4 +1,5 @@
-"""Shared chart color palette, matching themes/dark.qss."""
+"""Shared chart color palette, matching the dark theme's QPalette (see
+app.ui.themes.theme_manager)."""
 
 from PySide6.QtGui import QColor
 

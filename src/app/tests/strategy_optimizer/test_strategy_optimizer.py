@@ -73,9 +73,3 @@ def test_optimization_events_published() -> None:
 def test_thousand_candidate_performance() -> None:
     """1000 candidates should evaluate under 2 seconds."""
     pass
-
-
-@pytest.mark.skip(reason="skeleton")
-def test_genetic_algorithm_not_implemented() -> None:
-    """Genetic algorithm placeholder should raise NotImplementedError."""
-    pass

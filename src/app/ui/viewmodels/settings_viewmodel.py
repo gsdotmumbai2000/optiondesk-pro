@@ -26,7 +26,6 @@ class SettingsViewModel(BaseViewModel):
         self._theme_manager = theme_manager
         self._theme = theme_manager.current_theme.value
         self.apply_theme_command = RelayCommand(self.cycle_theme, parent=self)
-        self.save_command = RelayCommand(self.save_preferences, parent=self)
 
     @Property(str, notify=theme_changed)
     def theme(self) -> str:
@@ -43,9 +42,12 @@ class SettingsViewModel(BaseViewModel):
         self._theme = theme.value
         self.theme_changed.emit(self._theme)
 
-    def save_preferences(self) -> None:
-        prefs = self._ctx.provider.settings.get_preferences(self._ctx.session_id)
-        self._ctx.provider.settings.update_preferences(self._ctx.session_id, prefs)
+    def save_preferences(self, preferences: UserPreferences) -> None:
+        """Persist the given preferences (the caller -- SettingsView --
+        builds this from the current form state; previously this re-saved
+        whatever was already stored, so editing the form and clicking Save
+        had no effect)."""
+        self._ctx.provider.settings.update_preferences(self._ctx.session_id, preferences)
         self.status_message = "Preferences saved"
 
     def get_preferences(self) -> UserPreferences:

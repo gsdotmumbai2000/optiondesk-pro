@@ -22,13 +22,3 @@ class UIWorkspaceId(str, Enum):
     AI = "ai"
     REPORTS = "reports"
     SETTINGS = "settings"
-
-
-class ChartType(str, Enum):
-    """Chart placeholder types."""
-
-    PRICE = "price"
-    PAYOFF = "payoff"
-    GREEKS = "greeks"
-    VOLATILITY = "volatility"
-    PNL = "pnl"

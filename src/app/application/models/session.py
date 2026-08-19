@@ -32,6 +32,7 @@ class UserPreferences:
     default_exchange: str = "NSE"
     risk_tolerance: str = "moderate"
     auto_refresh_interval_seconds: int = 60
+    show_greeks_in_leg_picker: bool = False
 
 
 @dataclass(frozen=True, slots=True)

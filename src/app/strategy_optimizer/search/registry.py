@@ -2,9 +2,9 @@
 
 from app.strategy_optimizer.models.enums import SearchAlgorithmType
 from app.strategy_optimizer.search.brute_force import BruteForceSearch
+from app.strategy_optimizer.search.genetic import GeneticAlgorithmSearch
 from app.strategy_optimizer.search.placeholders import (
     BranchAndBoundSearch,
-    GeneticAlgorithmSearch,
     HeuristicSearch,
     ParticleSwarmSearch,
 )

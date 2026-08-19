@@ -16,7 +16,9 @@ from app.payoff.models.result import PayoffCurve, PayoffCurvePoint
 from app.ui.charts.greeks_chart import GreeksChartWidget
 from app.ui.charts.payoff_chart import PayoffChartWidget
 from app.ui.charts.pnl_chart import PnlChartWidget
+from app.ui.charts.price_chart import PriceChartWidget
 from app.ui.charts.volatility_chart import VolatilityChartWidget
+from app.ui.market.tick_candle_buffer import Candle
 
 
 @pytest.fixture(scope="module")
@@ -166,6 +168,62 @@ class TestVolatilityChartWidget:
 
         assert widget._call_series.count() == 0
         assert widget._put_series.count() == 0
+
+
+class TestPriceChartWidget:
+    def _candle(self, minute: int, open_: str, high: str, low: str, close: str) -> Candle:
+        return Candle(
+            start=datetime(2026, 8, 19, 9, 15 + minute, tzinfo=timezone.utc),
+            open=Decimal(open_), high=Decimal(high), low=Decimal(low), close=Decimal(close),
+        )
+
+    def test_set_candles_populates_all_sets(self, qapp: QApplication) -> None:
+        widget = PriceChartWidget()
+        candles = (
+            self._candle(0, "100", "105", "98", "102"),
+            self._candle(1, "102", "108", "101", "107"),
+        )
+
+        widget.set_candles(candles)
+
+        assert len(widget._series.sets()) == 2
+
+    def test_x_axis_range_matches_candle_time_bounds(self, qapp: QApplication) -> None:
+        widget = PriceChartWidget()
+        candles = (
+            self._candle(0, "100", "105", "98", "102"),
+            self._candle(5, "102", "108", "101", "107"),
+        )
+
+        widget.set_candles(candles)
+
+        assert widget._x_axis.min() == candles[0].start
+        assert widget._x_axis.max() == candles[1].start
+
+    def test_y_axis_range_covers_low_to_high_with_padding(self, qapp: QApplication) -> None:
+        widget = PriceChartWidget()
+        candles = (self._candle(0, "100", "110", "90", "105"),)
+
+        widget.set_candles(candles)
+
+        assert widget._y_axis.min() < 90.0
+        assert widget._y_axis.max() > 110.0
+
+    def test_empty_candles_clears_series(self, qapp: QApplication) -> None:
+        widget = PriceChartWidget()
+        widget.set_candles((self._candle(0, "100", "105", "98", "102"),))
+
+        widget.set_candles(())
+
+        assert len(widget._series.sets()) == 0
+
+    def test_clear_resets_series(self, qapp: QApplication) -> None:
+        widget = PriceChartWidget()
+        widget.set_candles((self._candle(0, "100", "105", "98", "102"),))
+
+        widget.clear()
+
+        assert len(widget._series.sets()) == 0
 
 
 class TestGreeksChartWidget:

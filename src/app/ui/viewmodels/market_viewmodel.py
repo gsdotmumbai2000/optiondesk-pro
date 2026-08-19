@@ -1,6 +1,6 @@
 """Market workspace ViewModel."""
 
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from PySide6.QtCore import Property, Signal
 from pydantic import ValidationError
@@ -317,6 +317,17 @@ def _to_int(value: object) -> int | None:
         return None
 
 
+def _round_2dp(value: object) -> str:
+    """Round IV/Greeks to 2 decimal places for the option chain table (e.g.
+    0.4023156 -> "0.40") -- full engine precision is still available
+    wherever the raw value is used (Greeks bar chart, calculations), this
+    only affects the chain table's display string."""
+    decimal_value = _to_decimal(value)
+    if decimal_value is None:
+        return "—"
+    return str(decimal_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
 def _option_row(side: str, strike_price, strike: dict, prefix: str) -> tuple:
     def field(name: str):
         value = strike.get(f"{prefix}_{name}")
@@ -328,11 +339,11 @@ def _option_row(side: str, strike_price, strike: dict, prefix: str) -> tuple:
         field("ltp"),
         field("oi"),
         field("volume"),
-        field("iv"),
-        field("delta"),
-        field("gamma"),
-        field("theta"),
-        field("vega"),
+        _round_2dp(strike.get(f"{prefix}_iv")),
+        _round_2dp(strike.get(f"{prefix}_delta")),
+        _round_2dp(strike.get(f"{prefix}_gamma")),
+        _round_2dp(strike.get(f"{prefix}_theta")),
+        _round_2dp(strike.get(f"{prefix}_vega")),
     )
 
 
@@ -347,9 +358,9 @@ def _live_option_row(side: str, strike_price, leg: dict) -> tuple:
         field("ltp"),
         field("open_interest"),
         field("volume"),
-        field("implied_volatility"),
-        field("delta"),
-        field("gamma"),
-        field("theta"),
-        field("vega"),
+        _round_2dp(leg.get("implied_volatility")),
+        _round_2dp(leg.get("delta")),
+        _round_2dp(leg.get("gamma")),
+        _round_2dp(leg.get("theta")),
+        _round_2dp(leg.get("vega")),
     )

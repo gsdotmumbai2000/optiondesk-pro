@@ -1,13 +1,15 @@
 """Strategy builder view."""
 
-from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-                                 QPushButton, QVBoxLayout, QWidget)
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+                                 QPushButton, QSplitter, QVBoxLayout, QWidget)
 
 from app.ui.charts import greeks_chart, payoff_chart
 from app.ui.dialogs.add_leg_dialog import AddLegDialog
+from app.ui.dialogs.open_dialog import OpenDialog
 from app.ui.strategy.leg_table_model import StrategyLegTableModel
 from app.ui.viewmodels.trading_viewmodel import TradingViewModel
-from app.ui.widgets.common import DataTableWidget, SectionHeader
+from app.ui.widgets.common import DataTableWidget, SectionHeader, style_splitter_handle
 
 
 class StrategyBuilderView(QWidget):
@@ -32,7 +34,7 @@ class StrategyBuilderView(QWidget):
             btn_row.addWidget(b)
         btn_row.addWidget(save_btn)
         load_btn = QPushButton("Load")
-        load_btn.clicked.connect(viewmodel.load_command.execute)
+        load_btn.clicked.connect(self._on_load_clicked)
         btn_row.addWidget(load_btn)
         root.addLayout(btn_row)
 
@@ -54,29 +56,58 @@ class StrategyBuilderView(QWidget):
         self._leg_model = StrategyLegTableModel(self)
         self._leg_table = DataTableWidget()
         self._leg_table.setModel(self._leg_model)
-        root.addWidget(self._leg_table)
+
+        # A QSplitter, not a plain stacked QVBoxLayout: the leg table and
+        # the charts both want real, user-controllable room, not just
+        # whatever proportion a fixed stack happens to give them. Drag the
+        # handle between the two panes to reallocate space either way.
+        legs_pane = QWidget()
+        legs_layout = QVBoxLayout(legs_pane)
+        legs_layout.setContentsMargins(0, 0, 0, 0)
+        legs_layout.addWidget(self._leg_table)
         self._summary = QLabel("Strategy summary placeholder")
-        root.addWidget(self._summary)
+        legs_layout.addWidget(self._summary)
         self._margin_summary = QLabel(viewmodel.margin_summary)
-        root.addWidget(self._margin_summary)
+        legs_layout.addWidget(self._margin_summary)
+
+        results_pane = QWidget()
+        results_layout = QVBoxLayout(results_pane)
+        results_layout.setContentsMargins(0, 0, 0, 0)
         charts = QGridLayout()
         self._payoff_chart = payoff_chart()
         self._greeks_chart = greeks_chart()
         charts.addWidget(self._payoff_chart, 0, 0)
         charts.addWidget(self._greeks_chart, 0, 1)
-        root.addLayout(charts)
+        results_layout.addLayout(charts)
         prob = QLabel("Probability summary — from engine results")
-        root.addWidget(prob)
+        results_layout.addWidget(prob)
         self._optimization_summary = QLabel("Optimization: not run yet")
-        root.addWidget(self._optimization_summary)
+        results_layout.addWidget(self._optimization_summary)
         self._paper_trade_summary = QLabel("Paper account: not traded yet")
-        root.addWidget(self._paper_trade_summary)
+        results_layout.addWidget(self._paper_trade_summary)
+
+        builder_splitter = QSplitter(Qt.Orientation.Vertical)
+        builder_splitter.addWidget(legs_pane)
+        builder_splitter.addWidget(results_pane)
+        builder_splitter.setStretchFactor(0, 1)
+        builder_splitter.setStretchFactor(1, 1)
+        style_splitter_handle(builder_splitter)
+        root.addWidget(builder_splitter, 1)
+
         viewmodel.summary_changed.connect(self._summary.setText)
         viewmodel.margin_summary_changed.connect(self._margin_summary.setText)
         viewmodel.evaluation_changed.connect(self._on_evaluation)
         viewmodel.optimization_changed.connect(self._on_optimization)
         viewmodel.paper_trade_changed.connect(self._on_paper_trade)
         viewmodel.pending_legs_changed.connect(self._leg_model.set_legs)
+        viewmodel.strategy_name_changed.connect(self._name_field.setText)
+
+    def _on_load_clicked(self) -> None:
+        """Show a picker of saved strategies and load the selected one's
+        legs into the builder via TradingViewModel.load_strategy()."""
+        dialog = OpenDialog(self._vm.list_strategies(), self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._vm.load_strategy(dialog.selected_id())
 
     def _on_evaluation(self, snapshot) -> None:
         """Render the latest evaluate_command result (a LiveAnalyticsSnapshot)

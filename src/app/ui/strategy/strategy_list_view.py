@@ -2,9 +2,12 @@
 
 from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
+from app.logging.logging_manager import get_logger
 from app.ui.strategy.strategy_list_model import StrategyListTableModel
 from app.ui.viewmodels.strategy_viewmodel import StrategyViewModel
 from app.ui.widgets.common import DataTableWidget, SectionHeader
+
+logger = get_logger(__name__)
 
 
 class StrategyListView(QWidget):
@@ -43,6 +46,11 @@ class StrategyListView(QWidget):
         selected."""
         rows = self._table.selectionModel().selectedRows()
         strategy_id = self._model.strategy_id_for_row(rows[0].row()) if rows else ""
+        logger.debug(
+            "Open clicked: selected_row_count={count} strategy_id={strategy_id!r}",
+            count=len(rows),
+            strategy_id=strategy_id,
+        )
         if not strategy_id:
             self._vm.open_command.execute()
             return

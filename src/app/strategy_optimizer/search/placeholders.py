@@ -1,7 +1,8 @@
 """Placeholder search algorithms (framework only).
 
-SimulatedAnnealingSearch has moved to search/simulated_annealing.py -- a
-real implementation, not a placeholder.
+SimulatedAnnealingSearch has moved to search/simulated_annealing.py and
+GeneticAlgorithmSearch to search/genetic.py -- real implementations, not
+placeholders.
 """
 
 from app.strategy.models.strategy import Strategy
@@ -23,22 +24,6 @@ class HeuristicSearch:
         fitness: CandidateFitnessEvaluator,
     ) -> tuple[Strategy, ...]:
         return candidates[: min(len(candidates), 100)]
-
-
-class GeneticAlgorithmSearch:
-    """Genetic algorithm placeholder."""
-
-    @property
-    def algorithm_id(self) -> str:
-        return "genetic"
-
-    def search(
-        self,
-        candidates: tuple[Strategy, ...],
-        request: OptimizationRequest,
-        fitness: CandidateFitnessEvaluator,
-    ) -> tuple[Strategy, ...]:
-        raise NotImplementedError("Genetic algorithm not yet implemented")
 
 
 class ParticleSwarmSearch:

@@ -66,13 +66,63 @@ class TestRestStrikeRowBuilding:
         rows = MarketViewModel._rows_from_rest_strikes([_strike(call_iv="14.2")])
 
         call_row = rows[0]
-        assert call_row[5] == "14.2"
+        assert call_row[5] == "14.20"
         assert call_row[6:] == ("—", "—", "—", "—")
 
     def test_multiple_strikes_produce_rows_in_order(self) -> None:
         rows = MarketViewModel._rows_from_rest_strikes([_strike("24500"), _strike("24600")])
 
         assert [row[1] for row in rows] == ["24500", "24500", "24600", "24600"]
+
+
+class TestIvAndGreeksAreRoundedToTwoDecimalPlaces:
+    """IV and Delta/Gamma/Theta/Vega all render rounded to 2 decimal places
+    in the option chain table -- full precision is only needed for
+    calculations, not for a strike-by-strike glance table."""
+
+    def test_rest_strike_iv_and_greeks_are_rounded(self) -> None:
+        rows = MarketViewModel._rows_from_rest_strikes([
+            _strike(
+                call_iv="18.567891", call_delta="0.4023156", call_gamma="0.0012345",
+                call_theta="-1.5678", call_vega="12.3456",
+            ),
+        ])
+
+        call_row = rows[0]
+        assert call_row[5] == "18.57"
+        assert call_row[6:] == ("0.40", "0.00", "-1.57", "12.35")
+
+    def test_live_chain_iv_and_greeks_are_rounded(self) -> None:
+        chain = {
+            "strikes": {
+                "24500": {
+                    "strike_price": "24500",
+                    "call": {
+                        "implied_volatility": "18.567891", "delta": "0.4023156",
+                        "gamma": "0.0012345", "theta": "-1.5678", "vega": "12.3456",
+                    },
+                    "put": {},
+                },
+            },
+        }
+
+        rows = MarketViewModel._rows_from_live_chain(chain)
+
+        call_row = rows[0]
+        assert call_row[5] == "18.57"
+        assert call_row[6:] == ("0.40", "0.00", "-1.57", "12.35")
+
+    def test_missing_iv_and_greeks_still_render_as_placeholder(self) -> None:
+        rows = MarketViewModel._rows_from_rest_strikes([_strike()])
+
+        assert rows[0][5] == "—"
+        assert rows[0][6:] == ("—", "—", "—", "—")
+
+    def test_non_numeric_iv_or_greek_renders_as_placeholder_not_a_crash(self) -> None:
+        rows = MarketViewModel._rows_from_rest_strikes([_strike(call_iv="n/a", call_delta="n/a")])
+
+        assert rows[0][5] == "—"
+        assert rows[0][6] == "—"
 
 
 class TestOptionChainTableModelRendering:

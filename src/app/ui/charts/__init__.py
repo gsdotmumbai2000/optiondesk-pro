@@ -1,21 +1,16 @@
 """Chart widgets package."""
 
-from app.ui.charts.base_chart import ChartPlaceholder
 from app.ui.charts.greeks_chart import GreeksChartWidget
 from app.ui.charts.payoff_chart import PayoffChartWidget
 from app.ui.charts.pnl_chart import PnlChartWidget
+from app.ui.charts.price_chart import PriceChartWidget
 from app.ui.charts.volatility_chart import VolatilityChartWidget
-from app.ui.models.ui_enums import ChartType
 
 
-def price_chart(parent=None) -> ChartPlaceholder:
-    """Create price chart placeholder.
-
-    Not yet real: a live tick-history price chart needs a candle/tick
-    buffer this pass didn't build. Left as a placeholder rather than
-    faking data.
-    """
-    return ChartPlaceholder(ChartType.PRICE, "Price Chart", parent)
+def price_chart(parent=None) -> PriceChartWidget:
+    """Create a real live-price candlestick chart. Feed it ticks via a
+    TickCandleBuffer (app.ui.market.tick_candle_buffer) and set_candles()."""
+    return PriceChartWidget("Price Chart", parent)
 
 
 def payoff_chart(parent=None) -> PayoffChartWidget:

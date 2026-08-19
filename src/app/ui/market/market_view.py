@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from app.logging.logging_manager import get_logger
 from app.ui.charts import price_chart, volatility_chart
+from app.ui.market.tick_candle_buffer import TickCandleBuffer
 from app.ui.option_chain.option_chain_view import OptionChainView
 from app.ui.viewmodels.market_viewmodel import MarketViewModel
 from app.ui.widgets.common import DataTableWidget, SectionHeader
@@ -36,7 +37,9 @@ class MarketView(QWidget):
         mid = QHBoxLayout()
         self._volatility_chart = volatility_chart()
         mid.addWidget(self._volatility_chart)
-        mid.addWidget(price_chart())
+        self._price_candles = TickCandleBuffer()
+        self._price_chart = price_chart()
+        mid.addWidget(self._price_chart)
         layout.addLayout(mid)
         self._chain = OptionChainView()
         layout.addWidget(self._chain)
@@ -73,6 +76,8 @@ class MarketView(QWidget):
         symbol = str(tick.get("symbol", ""))
         if symbol == "NIFTY":
             self._spot.update_tick(tick)
+            if self._price_candles.add_tick_payload(tick):
+                self._price_chart.set_candles(self._price_candles.candles)
         logger.debug(
             "Watchlist tick lookup: incoming_symbol={incoming_symbol!r}, "
             "available_keys={available_keys!r}, lookup_result={lookup_result!r}",

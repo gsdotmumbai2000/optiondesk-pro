@@ -1,6 +1,8 @@
-"""Tests for build_leg_from_inputs(): the Add Leg dialog's pure form-to-
-StrategyLeg parsing/validation, deliberately extracted so it's testable
-without a Qt event loop.
+"""Tests for build_leg_from_strike(): the Add Leg dialog's strike-to-
+StrategyLeg builder. Strike/premium arrive pre-validated from the live
+chain (real Decimal values, not user-typed text), so unlike the old
+text-parsing version there's nothing left to validate here beyond the
+right/side -> LegKind mapping and lot count.
 """
 
 from datetime import date
@@ -9,7 +11,7 @@ from decimal import Decimal
 import pytest
 
 from app.strategy.models.enums import LegKind
-from app.ui.dialogs.add_leg_dialog import build_leg_from_inputs
+from app.ui.dialogs.add_leg_dialog import build_leg_from_strike
 
 _EXPIRY = date(2026, 8, 18)
 
@@ -18,10 +20,10 @@ def _build(**overrides):
     defaults = dict(
         underlying="NIFTY", exchange="NFO", expiry=_EXPIRY,
         right="CE", side="Buy", lots=1,
-        strike_text="24500", premium_text="120.5", lot_size=75,
+        strike=Decimal("24500"), premium=Decimal("120.5"), lot_size=75,
     )
     defaults.update(overrides)
-    return build_leg_from_inputs(**defaults)
+    return build_leg_from_strike(**defaults)
 
 
 class TestRightSideMapping:
@@ -45,7 +47,7 @@ class TestRightSideMapping:
 
 
 class TestFieldPopulation:
-    def test_populates_all_fields_from_inputs(self) -> None:
+    def test_populates_all_fields_from_the_chosen_strike(self) -> None:
         leg = _build()
 
         assert leg.underlying == "NIFTY"
@@ -72,23 +74,3 @@ class TestValidation:
     def test_negative_lots_raises(self) -> None:
         with pytest.raises(ValueError, match="Quantity"):
             _build(lots=-1)
-
-    def test_non_numeric_strike_raises(self) -> None:
-        with pytest.raises(ValueError, match="Strike must be a number"):
-            _build(strike_text="not-a-number")
-
-    def test_zero_strike_raises(self) -> None:
-        with pytest.raises(ValueError, match="Strike must be positive"):
-            _build(strike_text="0")
-
-    def test_negative_strike_raises(self) -> None:
-        with pytest.raises(ValueError, match="Strike must be positive"):
-            _build(strike_text="-100")
-
-    def test_non_numeric_premium_raises(self) -> None:
-        with pytest.raises(ValueError, match="Premium must be a number"):
-            _build(premium_text="abc")
-
-    def test_zero_premium_raises(self) -> None:
-        with pytest.raises(ValueError, match="Premium must be positive"):
-            _build(premium_text="0")

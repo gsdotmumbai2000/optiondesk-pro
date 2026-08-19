@@ -20,6 +20,7 @@ from app.application.session.session_manager import SessionManager
 from app.backtesting.models.enums import OrderSide
 from app.backtesting.models.request import BacktestRequest
 from app.backtesting.models.result import BacktestResult
+from app.live.models.option_chain import LiveOptionStrike
 from app.market.enums import InstrumentType
 from app.paper_trading.models.account import PaperAccountSnapshot
 from app.paper_trading.models.request import PaperOrderRequest
@@ -38,6 +39,22 @@ from app.strategy_optimizer.models.request import OptimizationRequest
 from app.strategy_optimizer.models.result import OptimizationResult
 
 _DEFAULT_OPTIMIZATION_CAPITAL = Decimal("1000000")
+
+
+def _dict_from_live_strike(row: LiveOptionStrike) -> dict:
+    """Reshape a live-cache LiveOptionStrike into the same dict shape the
+    REST-snapshot fallback already returns (OptionStrike.model_dump), so
+    the Add Leg dialog's picker doesn't need two different row formats."""
+    call, put = row.call, row.put
+    return {
+        "strike_price": str(row.strike_price),
+        "call_ltp": str(call.ltp) if call and call.ltp is not None else None,
+        "put_ltp": str(put.ltp) if put and put.ltp is not None else None,
+        "call_oi": call.open_interest if call else None,
+        "put_oi": put.open_interest if put else None,
+        "call_delta": str(call.delta) if call and call.delta is not None else None,
+        "put_delta": str(put.delta) if put and put.delta is not None else None,
+    }
 
 
 class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMarginSupport):
@@ -125,6 +142,55 @@ class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMar
             True, WorkspaceType.TRADING, "Expiry options resolved",
             {"expiries": expiries, "lot_size": lot_size},
         )
+
+    def leg_chain_strikes(
+        self,
+        session_id: str,
+        underlying: str,
+        exchange: str,
+        expiry_date: str,
+    ) -> WorkspaceOperationResult:
+        """Return option chain strikes (LTP/OI/Greeks per side) for the Add
+        Leg dialog's strike picker.
+
+        Tries the tick-driven live cache first (live_option_chain) -- the
+        freshest source, updated on every tick -- and only falls back to
+        Market workspace's one-time REST snapshot (WorkspaceCache key
+        "{session_id}:chain:{underlying}", written by
+        MarketWorkspaceService.initial_option_chain()) when no ticks have
+        landed for this underlying/expiry yet. The live cache alone isn't
+        enough: it can sit empty for seconds or minutes right after
+        subscribing even though Market workspace already visibly shows the
+        chain (from that same REST snapshot), which made this dialog
+        wrongly report "unavailable" with the chain on screen. The REST
+        snapshot alone isn't enough either: it's never updated after that
+        first load, so using it exclusively would silently show stale
+        prices for as long as the dialog stays open while the market moves.
+
+        WorkspaceOperationResult.success is False (no strikes) when neither
+        source has this underlying/expiry yet, or the REST snapshot was
+        loaded for a different expiry than the one requested here --
+        callers should tell the user to open it in Market workspace first,
+        not treat this as an error."""
+        live_chain = self.live_option_chain(underlying, exchange, expiry_date)
+        if live_chain is not None and live_chain.strikes:
+            strikes = [_dict_from_live_strike(row) for row in live_chain.strike_list()]
+            return WorkspaceOperationResult(True, WorkspaceType.TRADING, f"{len(strikes)} strikes (live)", strikes)
+
+        payload = self._cache.get_data(f"{session_id}:chain:{underlying}")
+        if not isinstance(payload, dict) or not payload.get("strikes"):
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING,
+                "Live chain unavailable — subscribe to this underlying/expiry in Market workspace first",
+            )
+        if payload.get("expiry_date") != expiry_date:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING,
+                f"Market workspace has {underlying} loaded for {payload.get('expiry_date')}, "
+                f"not {expiry_date} — open this expiry there first",
+            )
+        strikes = payload["strikes"]
+        return WorkspaceOperationResult(True, WorkspaceType.TRADING, f"{len(strikes)} strikes", strikes)
 
     def evaluate_strategy(
         self,

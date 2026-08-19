@@ -2,10 +2,13 @@
 
 from PySide6.QtCore import Property, Signal
 
+from app.logging.logging_manager import get_logger
 from app.ui.commands.ui_command import RelayCommand
 from app.ui.models.ui_enums import UIWorkspaceId
 from app.ui.viewmodels.base_viewmodel import BaseViewModel
 from app.ui.viewmodels.context import ViewModelContext
+
+logger = get_logger(__name__)
 
 
 class StrategyViewModel(BaseViewModel):
@@ -42,9 +45,15 @@ class StrategyViewModel(BaseViewModel):
         actions only ever look at the Trading workspace's active entity_id,
         so it must be set here for those to find anything), then switch the
         UI to the Trading tab where it's actually usable."""
+        logger.debug("open_strategy: entering strategy_id={strategy_id}", strategy_id=strategy_id)
         result = self._ctx.provider.strategy.load_strategy(
             self._ctx.session_id,
             strategy_id,
+        )
+        logger.debug(
+            "open_strategy: strategy.load_strategy returned success={success} message={message}",
+            success=result.success,
+            message=result.message,
         )
         if not result.success:
             self.status_message = result.message
@@ -53,9 +62,16 @@ class StrategyViewModel(BaseViewModel):
             self._ctx.session_id,
             strategy_id,
         )
+        logger.debug(
+            "open_strategy: trading.load_strategy returned success={success} message={message}",
+            success=trading_result.success,
+            message=trading_result.message,
+        )
         self._ctx.provider.coordinator.notify_strategy_loaded(strategy_id)
+        logger.debug("open_strategy: coordinator notified")
         self.status_message = trading_result.message
         if trading_result.success:
+            logger.debug("open_strategy: emitting workspace_switch_requested TRADING")
             self.workspace_switch_requested.emit(UIWorkspaceId.TRADING.value)
 
     def save(self) -> None:

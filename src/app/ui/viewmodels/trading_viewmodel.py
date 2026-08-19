@@ -1,6 +1,7 @@
 """Trading workspace ViewModel."""
 
 from dataclasses import replace
+from datetime import date
 
 from PySide6.QtCore import Property, Signal
 
@@ -35,8 +36,6 @@ class TradingViewModel(BaseViewModel):
         self.refresh_command = RelayCommand(self.refresh, parent=self)
         self.evaluate_command = RelayCommand(self.evaluate, parent=self)
         self.optimize_command = RelayCommand(self.optimize, parent=self)
-        self.save_command = RelayCommand(self.save, parent=self)
-        self.load_command = RelayCommand(self.load, parent=self)
         self.recommend_command = RelayCommand(self.generate_recommendation, parent=self)
         self.refresh_margin_command = RelayCommand(self.refresh_margin, parent=self)
         self.paper_trade_command = RelayCommand(self.paper_trade, parent=self)
@@ -170,10 +169,6 @@ class TradingViewModel(BaseViewModel):
 
         self._ctx.worker.run(work, done, err)
 
-    def save(self) -> None:
-        """Save current strategy placeholder."""
-        self.status_message = "Save: provide strategy from builder"
-
     def add_leg(self, leg: StrategyLeg) -> None:
         """Add a leg to the strategy currently being built."""
         self._leg_builder.add_leg(leg)
@@ -201,6 +196,26 @@ class TradingViewModel(BaseViewModel):
         broker call -- safe to call directly, no worker)."""
         result = self._ctx.provider.trading.leg_builder_context(underlying)
         return result.data or {} if result.success else {}
+
+    def leg_chain_strikes(self, underlying: str, expiry: date, exchange: str = "NFO") -> tuple:
+        """Return strike rows (dicts: strike_price, call_*/put_* ltp/oi/
+        greeks) for the Add Leg dialog's strike picker -- the live
+        tick-driven chain when ticks have arrived, else Market workspace's
+        already-loaded REST snapshot, or () with a status message when
+        neither has this underlying/expiry yet -- pure cache read, no
+        broker call, safe to call directly, no worker."""
+        result = self._ctx.provider.trading.leg_chain_strikes(
+            self._ctx.session_id, underlying, exchange, expiry.strftime("%d-%b-%Y"),
+        )
+        if not result.success:
+            self.status_message = result.message
+            return ()
+        return tuple(result.data)
+
+    def show_greeks_in_leg_picker(self) -> bool:
+        """Whether the Add Leg dialog's strike picker should show Delta
+        columns -- a user preference (Settings), off by default."""
+        return self._ctx.provider.settings.get_preferences(self._ctx.session_id).show_greeks_in_leg_picker
 
     def save_new_strategy(self, name: str) -> None:
         """Persist the strategy currently being built and mark it active in
@@ -240,13 +255,38 @@ class TradingViewModel(BaseViewModel):
 
         self._ctx.worker.run(work, done, err)
 
-    def load(self) -> None:
-        """Navigate to strategy workspace."""
-        self._ctx.provider.navigation.navigate(
-            self._ctx.session_id,
-            WorkspaceType.STRATEGY,
-        )
-        self.status_message = "Open strategy loader"
+    def list_strategies(self) -> list[tuple[str, str]]:
+        """Return (strategy_id, name) pairs for the Load dialog's picker
+        list -- pure repository read, no broker call, safe to call
+        directly, no worker."""
+        result = self._ctx.provider.strategy.list_strategies(self._ctx.session_id)
+        if not result.success:
+            return []
+        return [(s.strategy_id, s.metadata.name) for s in (result.data or [])]
+
+    def load_strategy(self, strategy_id: str) -> None:
+        """Load a saved strategy's legs into the builder currently being
+        edited, and mark it active in both the Strategy and Trading
+        workspaces (mirrors StrategyViewModel.open_strategy -- Trading's
+        evaluate/optimize/paper-trade/margin actions only ever look at the
+        Trading workspace's active entity_id, so it must be set here too)."""
+        if not strategy_id:
+            self.status_message = "No strategy selected"
+            return
+        strategy_result = self._ctx.provider.strategy.load_strategy(self._ctx.session_id, strategy_id)
+        if not strategy_result.success:
+            self.status_message = strategy_result.message
+            return
+        trading_result = self._ctx.provider.trading.load_strategy(self._ctx.session_id, strategy_id)
+        if not trading_result.success:
+            self.status_message = trading_result.message
+            return
+        strategy = trading_result.data
+        self._leg_builder = StrategyBuilder().from_strategy(strategy)
+        self.pending_legs_changed.emit(list(self._leg_builder.legs))
+        self._strategy_name = strategy.metadata.name
+        self.strategy_name_changed.emit(self._strategy_name)
+        self.status_message = trading_result.message
 
     def generate_recommendation(self) -> None:
         """Trigger AI recommendation flow."""
