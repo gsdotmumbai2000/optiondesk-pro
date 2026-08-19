@@ -26,12 +26,16 @@ class BacktestView(QWidget):
             b.clicked.connect(cmd.execute)
             controls.addWidget(b)
         layout.addLayout(controls)
-        # Ready for viewmodel.run_command's BacktestResult.equity_curve via
-        # self._equity_chart.set_series() once that command runs a real
-        # BacktestRequest instead of its current placeholder.
         self._equity_chart = pnl_chart(title="Equity Curve")
         layout.addWidget(self._equity_chart)
         layout.addWidget(SectionHeader("Trade Log"))
         self._trades = DataTableWidget()
         layout.addWidget(self._trades)
         layout.addWidget(SectionHeader("Performance Summary"))
+        viewmodel.result_changed.connect(self._on_result)
+
+    def _on_result(self, result) -> None:
+        """Render the latest run_command result (a BacktestResult) into the
+        equity curve chart."""
+        points = [(p.timestamp, p.equity) for p in result.equity_curve.points]
+        self._equity_chart.set_series(points)

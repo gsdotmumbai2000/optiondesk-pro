@@ -9,6 +9,7 @@ from app.events.event_bus import EventBus
 from app.market.bootstrap import MarketMasterProvider
 from app.market_data.bootstrap import MarketDataProvider
 from app.monitor.bootstrap import MonitorProvider
+from app.paper_trading.bootstrap import PaperTradingProvider
 from app.portfolio.bootstrap import PortfolioProvider
 from app.strategy.bootstrap import StrategyProvider
 from app.strategy_optimizer.bootstrap import OptimizerProvider
@@ -30,5 +31,6 @@ def build_engine_registry(
         monitor=MonitorProvider(event_bus),
         ai=AIProvider(event_bus),
         market_master=MarketMasterProvider(data_dir, event_bus),
+        paper_trading=PaperTradingProvider(),
         market_data=market_data,
     )

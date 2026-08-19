@@ -24,6 +24,7 @@ from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult
 from app.ui.application.worker_pool import BackgroundWorker
 from app.ui.market.market_view import MarketView
+from app.ui.option_chain.chain_model import COLUMNS
 from app.ui.option_chain.option_chain_view import OptionChainView
 from app.ui.viewmodels.context import ViewModelContext
 from app.ui.viewmodels.market_viewmodel import MarketViewModel
@@ -191,4 +192,47 @@ class TestOptionChainViewReceivesRowsAcrossRealWorkerThread:
         )
 
         assert chain_view._model.rowCount() == 42  # noqa: SLF001
-        assert chain_view._model.columnCount() == 9  # noqa: SLF001
+        assert chain_view._model.columnCount() == len(COLUMNS)  # noqa: SLF001
+
+
+class TestOptionChainSnapshotChangedEmittedAcrossRealWorkerThread:
+    """The real OptionChainSnapshot (not just display rows) must reach the
+    volatility chart through the same async worker-thread -> GUI-thread
+    delivery path Task 12/13 fixed for option_chain_changed."""
+
+    def test_broker_connected_triggers_async_load_that_reaches_snapshot_changed(
+        self, real_async_pipeline
+    ) -> None:
+        vm, market, events = real_async_pipeline
+        emitted_snapshots: list = []
+        vm.option_chain_snapshot_changed.connect(emitted_snapshots.append)
+
+        events.broker_connected.emit({"broker": "breeze"})
+
+        assert _pump_until(lambda: len(emitted_snapshots) == 1), (
+            "option_chain_snapshot_changed was never emitted across the "
+            "async worker-thread -> GUI-thread delivery path"
+        )
+        snapshot = emitted_snapshots[0]
+        assert snapshot.underlying == "NIFTY"
+        assert len(snapshot.strikes) == len(_STRIKES)
+
+    def test_volatility_chart_receives_real_snapshot_after_async_load(
+        self, real_async_pipeline
+    ) -> None:
+        """_realistic_strikes() carries no IV data (matching the REST row
+        test's "not calculated in this phase" note), so the chart plots no
+        points -- what this proves is that a real OptionChainSnapshot
+        reaches VolatilityChartWidget.set_chain() at all, not that it has
+        IV to draw."""
+        vm, market, events = real_async_pipeline
+        view = MarketView(vm)
+        received: list = []
+        view._volatility_chart.set_chain = lambda snapshot: received.append(snapshot)  # noqa: SLF001
+
+        events.broker_connected.emit({"broker": "breeze"})
+
+        assert _pump_until(lambda: len(received) == 1, timeout=5.0), (
+            "VolatilityChartWidget.set_chain() was never called with the real chain snapshot"
+        )
+        assert received[0].underlying == "NIFTY"

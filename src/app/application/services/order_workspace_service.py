@@ -9,6 +9,9 @@ from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult, WorkspaceView
 from app.application.registry.engine_registry import EngineRegistry
 from app.application.session.session_manager import SessionManager
+from app.backtesting.models.enums import OrderSide
+from app.paper_trading.models.request import PaperOrderRequest
+from app.strategy.models.leg import StrategyLeg
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +59,40 @@ class OrderWorkspaceService:
     def pending_orders(self, session_id: str) -> tuple[OrderIntent, ...]:
         """Return pending order intents."""
         return self._pending.get(session_id, ())
+
+    def execute_paper_order(
+        self,
+        session_id: str,
+        leg: StrategyLeg,
+        side: OrderSide,
+        quantity: int,
+        reference_price: Decimal,
+    ) -> WorkspaceOperationResult:
+        """Simulate filling an order against this session's paper trading
+        account (a virtual portfolio, no broker routing) -- lets a
+        strategy be smoke-tested end to end without risking real capital.
+        `reference_price` is caller-supplied (e.g. a quoted premium or a
+        live snapshot's LTP); this service has no live-data dependency of
+        its own."""
+        trade = self._engines.paper_trading.service.submit_order(
+            session_id,
+            PaperOrderRequest(
+                leg=leg, side=side, quantity=quantity, reference_price=reference_price,
+                timestamp=datetime.now(timezone.utc),
+            ),
+        )
+        return WorkspaceOperationResult(
+            True, WorkspaceType.ORDER,
+            f"Paper order filled: {trade.quantity} @ {trade.fill_price}",
+            trade,
+        )
+
+    def paper_portfolio(self, session_id: str) -> WorkspaceOperationResult:
+        """Return this session's current paper trading account state."""
+        snapshot = self._engines.paper_trading.service.snapshot(session_id)
+        return WorkspaceOperationResult(
+            True, WorkspaceType.ORDER, f"Paper account equity: {snapshot.equity}", snapshot,
+        )
 
     def open_positions(self, portfolio_id: str) -> WorkspaceOperationResult:
         """Return open positions from portfolio engine."""

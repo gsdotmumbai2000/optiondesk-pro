@@ -4,6 +4,7 @@ from app.events.event_bus import EventBus
 from app.monitor.alerts.manager import AlertManager
 from app.monitor.events import AlertAcknowledgedEvent, AlertRaisedEvent
 from app.monitor.models.alert import Alert
+from app.monitor.services.notification_service import NotificationService
 
 
 class AlertService:
@@ -13,10 +14,12 @@ class AlertService:
         self,
         manager: AlertManager | None = None,
         event_bus: EventBus | None = None,
+        notification_service: NotificationService | None = None,
     ) -> None:
         """Initialize service."""
         self._manager = manager or AlertManager()
         self._event_bus = event_bus
+        self._notifications = notification_service
 
     @property
     def manager(self) -> AlertManager:
@@ -24,10 +27,14 @@ class AlertService:
         return self._manager
 
     def raise_alerts(self, alerts: tuple[Alert, ...]) -> None:
-        """Register alerts and publish events."""
+        """Register alerts, publish events, and deliver a notification for
+        each through whatever channel is currently configured (build-only,
+        with no delivery, when none is)."""
         for alert in alerts:
             self._manager.add(alert)
             self._publish_raised(alert)
+            if self._notifications is not None:
+                self._notifications.send(alert)
 
     def acknowledge(self, alert_id: str) -> Alert | None:
         """Acknowledge alert."""

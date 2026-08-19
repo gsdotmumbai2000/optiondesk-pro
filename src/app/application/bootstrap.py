@@ -11,6 +11,7 @@ from app.application.orchestration.workspace_coordinator import WorkspaceCoordin
 from app.application.queries.query_dispatcher import QueryDispatcher
 from app.application.services.ai_workspace_service import AIWorkspaceService
 from app.application.services.backtesting_workspace_service import BacktestingWorkspaceService
+from app.application.services.broker_historical_adapter import BrokerHistoricalAdapter
 from app.application.services.broker_margin_adapter import BrokerMarginAdapter
 from app.application.services.market_workspace_service import MarketWorkspaceService
 from app.application.services.order_workspace_service import OrderWorkspaceService
@@ -68,6 +69,9 @@ class ApplicationProvider:
         self.broker_margin_adapter = (
             BrokerMarginAdapter(broker_provider) if broker_provider is not None else None
         )
+        self.broker_historical_adapter = (
+            BrokerHistoricalAdapter(broker_provider) if broker_provider is not None else None
+        )
 
         self.trading = TradingWorkspaceService(
             self.engines,
@@ -91,7 +95,9 @@ class ApplicationProvider:
             self.market_data_service,
             self.live_analytics_service,
         )
-        self.backtesting = BacktestingWorkspaceService(self.engines, self.sessions, self.cache)
+        self.backtesting = BacktestingWorkspaceService(
+            self.engines, self.sessions, self.cache, self.broker_historical_adapter,
+        )
         self.market = MarketWorkspaceService(
             self.engines,
             self.sessions,

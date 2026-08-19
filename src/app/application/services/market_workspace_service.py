@@ -11,10 +11,12 @@ from app.application.registry.engine_registry import EngineRegistry
 from app.application.services.live_analytics_support import LiveAnalyticsSupport
 from app.application.session.session_manager import SessionManager
 from app.brokers.shared.enums import ProductType
+from app.calculation.utilities.leg_greeks import compute_leg_greeks
 from app.logging.logging_manager import get_logger
 from app.market.enums import ExchangeCode, ExpiryType
 from app.market_data.models.snapshot import MarketSnapshot
 from app.market_data.services.market_data_service import MarketDataService
+from app.pricing.models.enums import OptionType
 
 logger = get_logger(__name__)
 
@@ -248,6 +250,9 @@ class MarketWorkspaceService(LiveAnalyticsSupport):
         for strike in windowed:
             strike.is_atm = atm is not None and strike.strike_price == atm
 
+        if spot is not None:
+            self._enrich_greeks(windowed, underlying, exchange, spot, expiry_record.expiry_date)
+
         if window:
             logger.debug(
                 "initial_option_chain: subscribing option window strike_count={count}",
@@ -274,6 +279,50 @@ class MarketWorkspaceService(LiveAnalyticsSupport):
             WorkspaceType.MARKET,
             f"Option chain for {underlying} {expiry_date} ({len(windowed)} strikes)",
             payload,
+        )
+
+    @staticmethod
+    def _enrich_greeks(
+        strikes: list,
+        underlying: str,
+        exchange: str,
+        spot: Decimal,
+        expiry_date: date,
+    ) -> None:
+        """Backfill IV/Delta/Gamma/Theta/Vega on each strike.
+
+        Breeze's option-chain-quotes endpoint returns price/OI/volume only,
+        never Greeks or IV, so these are solved locally via the frozen
+        Black-Scholes engines rather than left blank.
+        """
+        now = datetime.now(timezone.utc)
+        solved = total = 0
+        for strike in strikes:
+            for prefix, option_type in (("call", OptionType.CALL), ("put", OptionType.PUT)):
+                total += 1
+                greeks = compute_leg_greeks(
+                    underlying=underlying,
+                    exchange=exchange,
+                    ltp=getattr(strike, f"{prefix}_ltp"),
+                    spot=spot,
+                    strike=strike.strike_price,
+                    expiry_date=expiry_date,
+                    option_type=option_type,
+                    now=now,
+                    known_iv=getattr(strike, f"{prefix}_iv"),
+                )
+                if greeks.implied_volatility is None:
+                    continue
+                solved += 1
+                setattr(strike, f"{prefix}_iv", greeks.implied_volatility)
+                setattr(strike, f"{prefix}_delta", greeks.delta)
+                setattr(strike, f"{prefix}_gamma", greeks.gamma)
+                setattr(strike, f"{prefix}_theta", greeks.theta)
+                setattr(strike, f"{prefix}_vega", greeks.vega)
+        logger.debug(
+            "initial_option_chain: greeks enriched solved={solved}/{total}",
+            solved=solved,
+            total=total,
         )
 
     def _subscribe_future(self, underlying: str, exchange: str, expiry_date: str) -> None:

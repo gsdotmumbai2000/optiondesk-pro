@@ -52,7 +52,7 @@ class LiveAnalyticsProvider:
         self._portfolio_cache = LivePortfolioCache()
         query_adapter = LiveMarketQueryAdapter(market_data, self._option_cache)
         calculation = self._build_calculation_provider(query_adapter, engines)
-        chain_manager = OptionChainManager(self._option_cache)
+        chain_manager = OptionChainManager(self._option_cache, market_data=market_data)
         active_strategy = (
             ActiveStrategyAdapter(sessions, workspace_cache)
             if sessions is not None and workspace_cache is not None
@@ -78,6 +78,7 @@ class LiveAnalyticsProvider:
             self._greeks_cache,
             self._risk_cache,
             self._portfolio_cache,
+            context_builder,
         )
         self.bundle = LiveAnalyticsServiceBundle(
             option_chain=chain_service,

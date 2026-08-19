@@ -309,18 +309,29 @@ class TestOptionChainPipelineEndToEnd:
         assert [row[1] for row in ce_rows] == _STRIKES
 
         # --- 8/9: CALL/PUT LTP-derived OI and volume preserved through the
-        # full pipeline (row tuple = side, strike, oi, volume, iv, ...) ---
+        # full pipeline (row tuple = side, strike, ltp, oi, volume, iv, ...) ---
         atm_call = next(row for row in ce_rows if row[1] == "24500")
         atm_put = next(row for row in pe_rows if row[1] == "24500")
-        assert atm_call[2] == "42000"  # call_oi at index 2 (40000 + 2*1000)
-        assert atm_call[3] == "91000"  # call_volume (90000 + 2*500)
-        assert atm_put[2] == "37000"  # put_oi (35000 + 2*1000)
-        assert atm_put[3] == "71000"  # put_volume (70000 + 2*500)
+        assert atm_call[2] == "120.0"  # call LTP (180.0 - 2*30.0)
+        assert atm_put[2] == "120.0"  # put LTP (60.0 + 2*30.0)
+        assert atm_call[3] == "42000"  # call_oi at index 3 (40000 + 2*1000)
+        assert atm_call[4] == "91000"  # call_volume (90000 + 2*500)
+        assert atm_put[3] == "37000"  # put_oi (35000 + 2*1000)
+        assert atm_put[4] == "71000"  # put_volume (70000 + 2*500)
 
-        # --- 15: no fake IV/Greeks generated when absent ---
+        # --- 15: IV/Greeks solved locally from LTP + spot when Breeze's
+        # payload carries neither (see app.calculation.utilities.leg_greeks) ---
         for row in rows:
-            assert row[4] == "—"  # IV: Breeze payload had none
-            assert row[5:] == ("—", "—", "—", "—")  # Delta, Gamma, Theta, Vega
+            iv, delta, gamma, theta, vega = row[5:]
+            assert iv != "—"
+            assert delta != "—"
+            assert gamma != "—"
+            assert theta != "—"
+            assert vega != "—"
+        atm_call_delta = float(atm_call[6])
+        atm_put_delta = float(atm_put[6])
+        assert 0.0 < atm_call_delta < 1.0  # ATM call delta is positive
+        assert -1.0 < atm_put_delta < 0.0  # ATM put delta is negative
 
         # --- 5: no CALL/PUT subscription-key collision — distinct
         # (strike_price, option_right) pairs for every OPTIONS subscribe()

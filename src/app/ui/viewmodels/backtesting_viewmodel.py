@@ -11,6 +11,7 @@ class BacktestingViewModel(BaseViewModel):
     """ViewModel for backtesting workspace."""
 
     run_state_changed = Signal(str)
+    result_changed = Signal(object)
 
     def __init__(self, ctx: ViewModelContext, parent=None) -> None:
         super().__init__(parent)
@@ -27,8 +28,31 @@ class BacktestingViewModel(BaseViewModel):
         return self._run_state
 
     def run_backtest(self) -> None:
+        """Run a real backtest for the active strategy against real broker
+        historical data, in the background (a REST call, not instant)."""
         self._ctx.provider.coordinator.notify_backtest_started(self._ctx.session_id)
-        self.status_message = "Run backtest: attach BacktestRequest in view"
+        self.busy = True
+
+        def work():
+            return self._ctx.provider.backtesting.run_active_strategy_backtest(self._ctx.session_id)
+
+        def done(result):
+            self.busy = False
+            if result is None:
+                return
+            if not result.success:
+                self.status_message = result.message
+                return
+            self._run_state = "COMPLETED"
+            self.run_state_changed.emit(self._run_state)
+            self.result_changed.emit(result.data)
+            self.status_message = result.message
+
+        def err(msg: str) -> None:
+            self.busy = False
+            self.set_error(msg)
+
+        self._ctx.worker.run(work, done, err)
 
     def pause(self) -> None:
         view = self._ctx.provider.backtesting.pause(self._ctx.session_id)

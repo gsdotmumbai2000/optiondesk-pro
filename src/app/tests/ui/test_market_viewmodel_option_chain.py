@@ -49,25 +49,25 @@ class TestRestStrikeRowBuilding:
 
         call_row, put_row = rows
         assert call_row[1] == "24500"
-        assert call_row[2] == "45000"
-        assert call_row[3] == "98000"
-        assert put_row[2] == "38000"
-        assert put_row[3] == "76000"
+        assert call_row[3] == "45000"
+        assert call_row[4] == "98000"
+        assert put_row[3] == "38000"
+        assert put_row[4] == "76000"
 
     def test_missing_iv_and_greeks_render_as_placeholder(self) -> None:
         rows = MarketViewModel._rows_from_rest_strikes([_strike()])
 
         call_row = rows[0]
-        assert call_row[4] == "—"  # IV: not calculated in this phase
-        assert call_row[5:] == ("—", "—", "—", "—")  # Delta, Gamma, Theta, Vega
+        assert call_row[5] == "—"  # IV: not calculated in this phase
+        assert call_row[6:] == ("—", "—", "—", "—")  # Delta, Gamma, Theta, Vega
 
     def test_no_greeks_are_invented_when_iv_is_present(self) -> None:
-        """Even if IV is available, Greeks must still be '—' (later phase)."""
+        """Even if IV is available, Gamma/Theta/Vega must still be '—' (later phase)."""
         rows = MarketViewModel._rows_from_rest_strikes([_strike(call_iv="14.2")])
 
         call_row = rows[0]
-        assert call_row[4] == "14.2"
-        assert call_row[5:] == ("—", "—", "—", "—")
+        assert call_row[5] == "14.2"
+        assert call_row[6:] == ("—", "—", "—", "—")
 
     def test_multiple_strikes_produce_rows_in_order(self) -> None:
         rows = MarketViewModel._rows_from_rest_strikes([_strike("24500"), _strike("24600")])

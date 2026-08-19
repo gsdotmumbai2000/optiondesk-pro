@@ -1,7 +1,13 @@
 """Market workspace ViewModel."""
 
-from PySide6.QtCore import Property, Signal
+from decimal import Decimal, InvalidOperation
 
+from PySide6.QtCore import Property, Signal
+from pydantic import ValidationError
+
+from app.calculation.models.snapshots import OptionChainSnapshot, OptionStrikeSnapshot
+from app.live.models.option_chain import LiveOptionChain
+from app.live.option_chain.chain_builder import ChainBuilder
 from app.logging.logging_manager import get_logger
 from app.market_data.diagnostics import log_tick_diagnostic
 from app.ui.commands.ui_command import RelayCommand
@@ -17,6 +23,7 @@ class MarketViewModel(BaseViewModel):
     tick_updated = Signal(dict)
     market_status_changed = Signal(dict)
     option_chain_changed = Signal(list)
+    option_chain_snapshot_changed = Signal(object)
 
     def __init__(self, ctx: ViewModelContext, parent=None) -> None:
         super().__init__(parent)
@@ -114,6 +121,9 @@ class MarketViewModel(BaseViewModel):
             rows = self._rows_from_rest_strikes(data.get("strikes", []))
             self.option_chain_changed.emit(rows)
             logger.debug("UI result emitted: option_chain_changed")
+            snapshot = self._snapshot_from_rest_chain(data)
+            if snapshot is not None:
+                self.option_chain_snapshot_changed.emit(snapshot)
             self.status_message = result.message
             logger.info(
                 "Option chain load completed: strikes={count}",
@@ -209,10 +219,61 @@ class MarketViewModel(BaseViewModel):
         ):
             return
         self.option_chain_changed.emit(self._rows_from_live_chain(chain))
+        snapshot = self._snapshot_from_live_chain(chain)
+        if snapshot is not None:
+            self.option_chain_snapshot_changed.emit(snapshot)
+
+    @staticmethod
+    def _snapshot_from_rest_chain(data: dict) -> OptionChainSnapshot | None:
+        """Build a real OptionChainSnapshot from initial_option_chain()'s
+        REST payload -- the same field names as OptionStrikeSnapshot come
+        straight from market_data's OptionStrike.model_dump(mode="json")."""
+        underlying = data.get("underlying")
+        if not underlying:
+            return None
+        strikes = []
+        for raw in data.get("strikes", []):
+            if not isinstance(raw, dict) or raw.get("strike_price") is None:
+                continue
+            strike_price = _to_decimal(raw.get("strike_price"))
+            if strike_price is None:
+                continue
+            strikes.append(
+                OptionStrikeSnapshot(
+                    strike_price=strike_price,
+                    call_ltp=_to_decimal(raw.get("call_ltp")),
+                    put_ltp=_to_decimal(raw.get("put_ltp")),
+                    call_oi=_to_int(raw.get("call_oi")),
+                    put_oi=_to_int(raw.get("put_oi")),
+                    call_iv=_to_decimal(raw.get("call_iv")),
+                    put_iv=_to_decimal(raw.get("put_iv")),
+                    is_atm=bool(raw.get("is_atm", False)),
+                )
+            )
+        return OptionChainSnapshot(
+            underlying=str(underlying),
+            exchange=str(data.get("exchange", "")),
+            expiry_date=str(data.get("expiry_date", "")),
+            spot_price=_to_decimal(data.get("spot_price")),
+            atm_strike=_to_decimal(data.get("atm_strike")),
+            strikes=tuple(strikes),
+        )
+
+    @staticmethod
+    def _snapshot_from_live_chain(chain: dict) -> OptionChainSnapshot | None:
+        """Build a real OptionChainSnapshot from a LiveOptionChainUpdatedEvent
+        payload via the same ChainBuilder.to_snapshot() the live calculation
+        pipeline uses, so the volatility chart renders identically to what
+        the engines actually calculated from."""
+        try:
+            live_chain = LiveOptionChain.model_validate(chain)
+        except ValidationError:
+            return None
+        return ChainBuilder.to_snapshot(live_chain)
 
     @staticmethod
     def _rows_from_rest_strikes(strikes: list) -> list[tuple]:
-        """Build (Type, Strike, OI, Volume, IV, Delta, Gamma, Theta, Vega) rows."""
+        """Build (Type, Strike, LTP, OI, Volume, IV, Delta, Gamma, Theta, Vega) rows."""
         rows: list[tuple] = []
         for strike in strikes:
             if not isinstance(strike, dict):
@@ -238,6 +299,24 @@ class MarketViewModel(BaseViewModel):
         return rows
 
 
+def _to_decimal(value: object) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except InvalidOperation:
+        return None
+
+
+def _to_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _option_row(side: str, strike_price, strike: dict, prefix: str) -> tuple:
     def field(name: str):
         value = strike.get(f"{prefix}_{name}")
@@ -246,13 +325,14 @@ def _option_row(side: str, strike_price, strike: dict, prefix: str) -> tuple:
     return (
         side,
         str(strike_price),
+        field("ltp"),
         field("oi"),
         field("volume"),
         field("iv"),
-        "—",
-        "—",
-        "—",
-        "—",
+        field("delta"),
+        field("gamma"),
+        field("theta"),
+        field("vega"),
     )
 
 
@@ -264,11 +344,12 @@ def _live_option_row(side: str, strike_price, leg: dict) -> tuple:
     return (
         side,
         str(strike_price),
+        field("ltp"),
         field("open_interest"),
         field("volume"),
         field("implied_volatility"),
-        "—",
-        "—",
-        "—",
-        "—",
+        field("delta"),
+        field("gamma"),
+        field("theta"),
+        field("vega"),
     )

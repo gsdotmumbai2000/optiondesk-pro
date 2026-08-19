@@ -34,10 +34,6 @@ class MarketView(QWidget):
         top.addWidget(self._wrap("Indices", self._indices))
         layout.addLayout(top)
         mid = QHBoxLayout()
-        # Ready for real chain data via self._volatility_chart.set_chain()
-        # once wired to a raw OptionChainSnapshot -- option_chain_changed
-        # currently only carries pre-formatted display rows, not the
-        # snapshot the chart needs.
         self._volatility_chart = volatility_chart()
         mid.addWidget(self._volatility_chart)
         mid.addWidget(price_chart())
@@ -48,6 +44,7 @@ class MarketView(QWidget):
         viewmodel.tick_updated.connect(self._on_tick)
         viewmodel.market_status_changed.connect(self._on_market_status)
         viewmodel.option_chain_changed.connect(self._chain.load_rows)
+        viewmodel.option_chain_snapshot_changed.connect(self._volatility_chart.set_chain)
         self._on_watchlist(viewmodel.watchlist)
 
     def _wrap(self, title: str, widget: QWidget) -> QWidget:

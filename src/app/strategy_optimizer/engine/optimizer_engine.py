@@ -14,6 +14,7 @@ from app.strategy_optimizer.models.result import OptimizationResult
 from app.strategy_optimizer.objectives.weighter import ObjectiveWeighter
 from app.strategy_optimizer.ranking.ranker import StrategyRanker
 from app.strategy_optimizer.scoring.scorer import greeks_summary, score_evaluation
+from app.strategy_optimizer.search.fitness import CandidateFitnessEvaluator
 from app.strategy_optimizer.search.registry import resolve_search_algorithm
 
 
@@ -42,7 +43,8 @@ class OptimizerEngine:
         ctx = request.calculation_context
         all_candidates = self._generator.generate(ctx)
         search = resolve_search_algorithm(request.preferences.search_algorithm)
-        search_space = search.search(all_candidates, request)
+        fitness = CandidateFitnessEvaluator(self._evaluator, request)
+        search_space = search.search(all_candidates, request, fitness)
 
         eval_requests = tuple(
             build_evaluation_request(s, request) for s in search_space
@@ -110,6 +112,6 @@ class OptimizerEngine:
             greeks_summary=best.greeks_summary,
             liquidity_score=best.score.liquidity_score,
             recommendation=rec,
-            ranking=tuple(c.strategy.strategy_id for c in ranked),
+            ranking=tuple(c.evaluation.strategy.strategy_id for c in ranked),
             optimization_timestamp=datetime.now(timezone.utc),
         )

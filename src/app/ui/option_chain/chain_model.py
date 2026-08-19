@@ -3,7 +3,7 @@
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 
-COLUMNS = ("Type", "Strike", "OI", "Volume", "IV", "Delta", "Gamma", "Theta", "Vega")
+COLUMNS = ("Type", "Strike", "LTP", "OI", "Volume", "IV", "Delta", "Gamma", "Theta", "Vega")
 
 
 class OptionChainTableModel(QAbstractTableModel):

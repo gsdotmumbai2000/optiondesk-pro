@@ -1,7 +1,12 @@
-"""Placeholder search algorithms (framework only)."""
+"""Placeholder search algorithms (framework only).
+
+SimulatedAnnealingSearch has moved to search/simulated_annealing.py -- a
+real implementation, not a placeholder.
+"""
 
 from app.strategy.models.strategy import Strategy
 from app.strategy_optimizer.models.request import OptimizationRequest
+from app.strategy_optimizer.search.fitness import CandidateFitnessEvaluator
 
 
 class HeuristicSearch:
@@ -15,6 +20,7 @@ class HeuristicSearch:
         self,
         candidates: tuple[Strategy, ...],
         request: OptimizationRequest,
+        fitness: CandidateFitnessEvaluator,
     ) -> tuple[Strategy, ...]:
         return candidates[: min(len(candidates), 100)]
 
@@ -30,6 +36,7 @@ class GeneticAlgorithmSearch:
         self,
         candidates: tuple[Strategy, ...],
         request: OptimizationRequest,
+        fitness: CandidateFitnessEvaluator,
     ) -> tuple[Strategy, ...]:
         raise NotImplementedError("Genetic algorithm not yet implemented")
 
@@ -45,23 +52,9 @@ class ParticleSwarmSearch:
         self,
         candidates: tuple[Strategy, ...],
         request: OptimizationRequest,
+        fitness: CandidateFitnessEvaluator,
     ) -> tuple[Strategy, ...]:
         raise NotImplementedError("Particle swarm not yet implemented")
-
-
-class SimulatedAnnealingSearch:
-    """Simulated annealing placeholder."""
-
-    @property
-    def algorithm_id(self) -> str:
-        return "simulated_annealing"
-
-    def search(
-        self,
-        candidates: tuple[Strategy, ...],
-        request: OptimizationRequest,
-    ) -> tuple[Strategy, ...]:
-        raise NotImplementedError("Simulated annealing not yet implemented")
 
 
 class BranchAndBoundSearch:
@@ -75,5 +68,6 @@ class BranchAndBoundSearch:
         self,
         candidates: tuple[Strategy, ...],
         request: OptimizationRequest,
+        fitness: CandidateFitnessEvaluator,
     ) -> tuple[Strategy, ...]:
         raise NotImplementedError("Branch and bound not yet implemented")

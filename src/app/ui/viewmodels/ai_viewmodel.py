@@ -25,7 +25,30 @@ class AIViewModel(BaseViewModel):
         return self._recommendations
 
     def generate(self) -> None:
-        self.status_message = "Generate: attach RecommendationAnalysisRequest"
+        """Generate AI recommendations for the active strategy, in the
+        background (builds a real portfolio result and pulls in live
+        analytics/optimization context, so it's not instant)."""
+        self.busy = True
+
+        def work():
+            return self._ctx.provider.ai.generate_recommendation_for_active_strategy(self._ctx.session_id)
+
+        def done(result):
+            self.busy = False
+            if result is None:
+                return
+            if not result.success:
+                self.status_message = result.message
+                return
+            self._recommendations = list(result.data.recommendations)
+            self.recommendations_changed.emit(self._recommendations)
+            self.status_message = result.message
+
+        def err(msg: str) -> None:
+            self.busy = False
+            self.set_error(msg)
+
+        self._ctx.worker.run(work, done, err)
 
     def load_history(self) -> None:
         result = self._ctx.provider.ai.recommendation_history(self._ctx.session_id)

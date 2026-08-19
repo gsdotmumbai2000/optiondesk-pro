@@ -25,7 +25,7 @@ class OptimizerProvider:
         self.engine = OptimizerEngine(evaluator)
         self.validator = OptimizerValidator()
         self.cache = OptimizationCache()
-        self.search_service = SearchService()
+        self.search_service = SearchService(evaluator)
         self.ranking_service = RankingService()
         self.constraint_service = ConstraintService()
         self.objective_service = ObjectiveService()

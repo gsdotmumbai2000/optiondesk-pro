@@ -7,9 +7,9 @@ from app.strategy_optimizer.search.placeholders import (
     GeneticAlgorithmSearch,
     HeuristicSearch,
     ParticleSwarmSearch,
-    SimulatedAnnealingSearch,
 )
 from app.strategy_optimizer.search.port import SearchAlgorithm
+from app.strategy_optimizer.search.simulated_annealing import SimulatedAnnealingSearch
 
 
 def resolve_search_algorithm(

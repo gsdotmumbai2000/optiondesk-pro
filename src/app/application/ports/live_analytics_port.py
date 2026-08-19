@@ -2,6 +2,7 @@
 
 from typing import Protocol
 
+from app.live.calculations.evaluation_context import EvaluationContext
 from app.live.models.analytics import LiveAnalyticsSnapshot
 from app.live.models.enums import RefreshMode
 from app.live.models.option_chain import LiveOptionChain
@@ -34,5 +35,22 @@ class LiveAnalyticsPort(Protocol):
     ) -> None:
         """Request manual analytics refresh."""
 
+    def refresh_and_get_analytics(
+        self,
+        underlying: str,
+        exchange: str,
+        expiry_date: str,
+    ) -> LiveAnalyticsSnapshot | None:
+        """Synchronously recompute and return an analytics snapshot."""
+
     def refresh_mode(self) -> RefreshMode:
         """Return current refresh mode."""
+
+    def build_evaluation_context(
+        self,
+        underlying: str,
+        exchange: str,
+        expiry_date: str,
+    ) -> EvaluationContext | None:
+        """Build the raw context bundle other callers need to construct
+        their own evaluation requests."""

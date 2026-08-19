@@ -2,11 +2,12 @@
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QMainWindow, QStatusBar, QTabWidget
+from PySide6.QtWidgets import QApplication, QMainWindow, QStatusBar, QStyle, QSystemTrayIcon, QTabWidget
 
 from app.ui.dialogs.broker_login_dialog import BrokerLoginDialog
 from app.ui.dialogs.broker_settings_dialog import BrokerSettingsDialog
 from app.ui.docking.dock_manager import DockManager
+from app.ui.notifications.desktop_toast_channel import DesktopToastChannel
 from app.ui.widgets.connection_indicator import ConnectionIndicator
 from app.ui.widgets.market_status_indicator import MarketStatusIndicator
 from app.ui.main_window.ribbon_bar import build_ribbon
@@ -58,6 +59,7 @@ class MainWindow(QMainWindow):
         self._build_central()
         self._build_docks()
         self._build_status()
+        self._build_notifications()
         self._wire_navigation()
         self._wire_events()
 
@@ -149,6 +151,23 @@ class MainWindow(QMainWindow):
         ):
             vm.status_message_changed.connect(self._status.showMessage)
 
+    def _build_notifications(self) -> None:
+        """Wire a real alert-delivery channel: a desktop tray toast, shown
+        for every alert MonitorProvider's AlertService raises from here on.
+        Skipped (notification_service keeps its build-only default) when no
+        system tray is available -- e.g. some CI/remote-desktop sessions --
+        so this never blocks startup or raises there."""
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        icon = self.windowIcon()
+        if icon.isNull():
+            icon = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation)
+        self._tray_icon = QSystemTrayIcon(icon, self)
+        self._tray_icon.setToolTip("OptionDesk Pro")
+        self._tray_icon.show()
+        channel = DesktopToastChannel(self._tray_icon)
+        self._ctx.provider.engines.monitor.notification_service.set_channel(channel)
+
     def _on_broker_status(self, payload: dict) -> None:
         status = payload.get("status")
         if not isinstance(status, object):
@@ -192,10 +211,14 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _wire_navigation(self) -> None:
-        index_map = {ws: i for i, ws in enumerate(UIWorkspaceId)}
-        self._nav.workspace_selected.connect(
-            lambda name: self._tabs.setCurrentIndex(index_map[UIWorkspaceId(name)])
-        )
+        self._workspace_tab_index = {ws.value: i for i, ws in enumerate(UIWorkspaceId)}
+        self._nav.workspace_selected.connect(self._activate_workspace_tab)
+        self._strategy_vm.workspace_switch_requested.connect(self._activate_workspace_tab)
+
+    def _activate_workspace_tab(self, workspace_id: str) -> None:
+        index = self._workspace_tab_index.get(workspace_id)
+        if index is not None:
+            self._tabs.setCurrentIndex(index)
 
     def _toggle_fullscreen(self) -> None:
         if self.isFullScreen():

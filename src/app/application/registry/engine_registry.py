@@ -7,6 +7,7 @@ from app.backtesting.bootstrap import BacktestProvider
 from app.market.bootstrap import MarketMasterProvider
 from app.market_data.bootstrap import MarketDataProvider
 from app.monitor.bootstrap import MonitorProvider
+from app.paper_trading.bootstrap import PaperTradingProvider
 from app.portfolio.bootstrap import PortfolioProvider
 from app.strategy.bootstrap import StrategyProvider
 from app.strategy_optimizer.bootstrap import OptimizerProvider
@@ -23,4 +24,5 @@ class EngineRegistry:
     monitor: MonitorProvider
     ai: AIProvider
     market_master: MarketMasterProvider
+    paper_trading: PaperTradingProvider
     market_data: MarketDataProvider | None = None

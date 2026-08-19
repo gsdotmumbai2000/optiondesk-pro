@@ -1,7 +1,8 @@
 """Trading workspace service."""
 
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from app.ai.models.batch import RecommendationBatchResult
 from app.ai.models.request import RecommendationAnalysisRequest
@@ -16,13 +17,27 @@ from app.application.services.broker_margin_support import BrokerMarginSupport
 from app.application.services.live_analytics_support import LiveAnalyticsSupport
 from app.application.services.market_data_support import MarketDataSupport
 from app.application.session.session_manager import SessionManager
+from app.backtesting.models.enums import OrderSide
 from app.backtesting.models.request import BacktestRequest
 from app.backtesting.models.result import BacktestResult
+from app.market.enums import InstrumentType
+from app.paper_trading.models.account import PaperAccountSnapshot
+from app.paper_trading.models.request import PaperOrderRequest
 from app.strategy.models.evaluation import StrategyEvaluation
 from app.strategy.models.request import StrategyEvaluationRequest
 from app.strategy.models.strategy import Strategy
+from app.strategy_optimizer.models.constraints import OptimizationConstraints
+from app.strategy_optimizer.models.enums import (
+    MarketOutlook,
+    OptimizationObjective,
+    RiskPreference,
+    SearchAlgorithmType,
+)
+from app.strategy_optimizer.models.preferences import OptimizationPreferences
 from app.strategy_optimizer.models.request import OptimizationRequest
 from app.strategy_optimizer.models.result import OptimizationResult
+
+_DEFAULT_OPTIMIZATION_CAPITAL = Decimal("1000000")
 
 
 class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMarginSupport):
@@ -63,6 +78,52 @@ class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMar
             WorkspaceType.TRADING,
             "Strategy created",
             created,
+        )
+
+    def list_underlyings(self) -> WorkspaceOperationResult:
+        """List known underlyings (index instruments) for the strategy leg
+        builder -- pure Instrument Master lookup, no broker call."""
+        instruments = self._engines.market_master.instrument_service.find_by_instrument_type(
+            InstrumentType.INDEX
+        )
+        underlyings = sorted({instrument.underlying for instrument in instruments})
+        return WorkspaceOperationResult(
+            True, WorkspaceType.TRADING, f"{len(underlyings)} underlyings", underlyings,
+        )
+
+    def leg_builder_context(
+        self,
+        underlying: str,
+        exchange: str = "NFO",
+    ) -> WorkspaceOperationResult:
+        """Return expiry choices and lot size for a leg being added to a new
+        strategy -- pure Instrument/Expiry Master lookups, no broker call.
+
+        WorkspaceOperationResult.success is False (no data) when the
+        underlying isn't in the Instrument Master or has no resolvable
+        expiry."""
+        instrument_service = self._engines.market_master.instrument_service
+        try:
+            lot_size = instrument_service.get_lot_size(underlying)
+        except LookupError:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, f"Unknown underlying: {underlying}",
+            )
+        today = date.today()
+        weekly = instrument_service.weekly_expiry(underlying, exchange, on_date=today)
+        monthly = instrument_service.monthly_expiry(underlying, exchange, on_date=today)
+        expiries: list[tuple[str, date]] = []
+        if weekly is not None:
+            expiries.append((f"Weekly {weekly.expiry_date.isoformat()}", weekly.expiry_date))
+        if monthly is not None and (weekly is None or monthly.expiry_date != weekly.expiry_date):
+            expiries.append((f"Monthly {monthly.expiry_date.isoformat()}", monthly.expiry_date))
+        if not expiries:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, f"No expiry available for {underlying}",
+            )
+        return WorkspaceOperationResult(
+            True, WorkspaceType.TRADING, "Expiry options resolved",
+            {"expiries": expiries, "lot_size": lot_size},
         )
 
     def evaluate_strategy(
@@ -134,6 +195,60 @@ class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMar
             True, WorkspaceType.TRADING, "Broker margin refreshed", broker_response,
         )
 
+    def evaluate_active_strategy(
+        self,
+        session_id: str,
+        exchange: str = "NFO",
+    ) -> WorkspaceOperationResult:
+        """Evaluate the strategy currently active in this session's Trading
+        workspace: synchronously refreshes live analytics (payoff, Greeks,
+        risk, margin) for its chain, taken from its first leg's underlying/
+        exchange/expiry (all legs of one strategy share the same chain).
+
+        Deliberately synchronous, not the tick-driven LiveCalculationPipeline:
+        this is an explicit on-demand "Evaluate" action, the same pattern as
+        refresh_margin() above, so it needs the result immediately rather
+        than racing the background dispatcher.
+
+        WorkspaceOperationResult.success is False (no snapshot data) when
+        there's no active strategy, the strategy has no legs, its legs are
+        missing underlying/expiry, or its chain hasn't been subscribed yet
+        (e.g. Market workspace hasn't loaded this underlying/expiry this
+        session) -- callers should keep showing whatever was last evaluated,
+        not treat this as an error."""
+        session = self._sessions.get(session_id)
+        strategy_id = next(
+            (w.entity_id for w in session.workspaces if w.workspace == WorkspaceType.TRADING and w.entity_id),
+            "",
+        )
+        if not strategy_id:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, "No active strategy to evaluate",
+            )
+        strategy = self._cache.get_strategy(strategy_id)
+        if strategy is None:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, f"Strategy not found: {strategy_id}",
+            )
+        if not strategy.legs:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, "Strategy has no legs to evaluate",
+            )
+        leg = strategy.legs[0]
+        if not leg.underlying or not leg.expiry:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, "Strategy legs are missing underlying/expiry",
+            )
+        snapshot = self.refresh_live_analytics(
+            leg.underlying, leg.exchange or exchange, leg.expiry.strftime("%d-%b-%Y"),
+        )
+        if snapshot is None:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING,
+                "Live chain unavailable — subscribe to this underlying/expiry in Market workspace first",
+            )
+        return WorkspaceOperationResult(True, WorkspaceType.TRADING, "Strategy evaluated", snapshot)
+
     def optimize_strategy(
         self,
         session_id: str,
@@ -143,6 +258,151 @@ class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMar
         result = self._engines.optimizer.service.optimize(request)
         self._cache.put_data(f"{session_id}:optimization", result)
         return result
+
+    def optimize_active_strategy(
+        self,
+        session_id: str,
+        exchange: str = "NFO",
+    ) -> WorkspaceOperationResult:
+        """Search for better variants of the strategy currently active in
+        this session's Trading workspace, over the same chain
+        evaluate_active_strategy() uses (its first leg's underlying/
+        exchange/expiry).
+
+        OptimizationPreferences/OptimizationConstraints use fixed defaults
+        (capital, ranking size, Simulated Annealing search) since no UI
+        exists yet for configuring them -- the same "sensible fixed
+        defaults, no config screen" scope already used for
+        run_active_strategy_backtest()'s SimulationParameters.
+        primary_objective=MAX_POP is the one default that's actually
+        consumed downstream: CandidateFitnessEvaluator's Simulated
+        Annealing walk reads it via ObjectiveWeighter.
+
+        WorkspaceOperationResult.success is False (no result data) when
+        there's no active strategy, its legs are missing an underlying/
+        expiry, or its chain hasn't been subscribed yet -- callers should
+        keep showing whatever was last optimized, not treat this as an
+        error."""
+        session = self._sessions.get(session_id)
+        strategy_id = next(
+            (w.entity_id for w in session.workspaces if w.workspace == WorkspaceType.TRADING and w.entity_id),
+            "",
+        )
+        if not strategy_id:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, "No active strategy to optimize",
+            )
+        strategy = self._cache.get_strategy(strategy_id)
+        if strategy is None:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, f"Strategy not found: {strategy_id}",
+            )
+        if not strategy.legs:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, "Strategy has no legs to optimize",
+            )
+        leg = strategy.legs[0]
+        if not leg.underlying or not leg.expiry:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, "Strategy legs are missing underlying/expiry",
+            )
+        underlying = leg.underlying
+        leg_exchange = leg.exchange or exchange
+        expiry_date = leg.expiry.strftime("%d-%b-%Y")
+
+        context = self.evaluation_context(underlying, leg_exchange, expiry_date)
+        if context is None:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING,
+                "Live chain unavailable — subscribe to this underlying/expiry in Market workspace first",
+            )
+        snapshot = self.refresh_live_analytics(underlying, leg_exchange, expiry_date)
+        if snapshot is None or snapshot.risk is None or snapshot.margin is None:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING,
+                "Live analytics unavailable for this strategy — evaluate it first",
+            )
+
+        request = OptimizationRequest(
+            calculation_context=context.calculation_context,
+            strategy_context=None,
+            market_snapshot=context.market_snapshot,
+            option_chain_analysis=snapshot.chain_analysis,
+            volatility_result=snapshot.volatility,
+            probability_result=snapshot.probability,
+            risk_result=snapshot.risk,
+            margin_result=snapshot.margin,
+            preferences=OptimizationPreferences(
+                underlying=underlying,
+                expiry=expiry_date,
+                capital=_DEFAULT_OPTIMIZATION_CAPITAL,
+                market_outlook=MarketOutlook.NEUTRAL,
+                risk_preference=RiskPreference.MODERATE,
+                primary_objective=OptimizationObjective.MAX_POP,
+                search_algorithm=SearchAlgorithmType.SIMULATED_ANNEALING,
+            ),
+            constraints=OptimizationConstraints(),
+            option_contract=context.option_contract,
+            option_chain=context.option_chain,
+            chain_market_snapshot=context.chain_market_snapshot,
+            volatility_market_snapshot=context.volatility_market_snapshot,
+            historical_data=context.historical_data,
+        )
+        result = self.optimize_strategy(session_id, request)
+        return WorkspaceOperationResult(True, WorkspaceType.TRADING, "Optimization complete", result)
+
+    def paper_trade_active_strategy(
+        self,
+        session_id: str,
+        exchange: str = "NFO",
+    ) -> WorkspaceOperationResult:
+        """Submit every leg of the strategy currently active in this
+        session's Trading workspace as a paper order -- a simulated fill
+        against this session's virtual paper account (no broker routing,
+        no capital at risk), using each leg's own recorded premium as the
+        reference price. Unlike evaluate/optimize above, this needs no
+        live chain subscription: the leg already carries the price the
+        strategy was built around.
+
+        WorkspaceOperationResult.success is False (no trades/snapshot data)
+        when there's no active strategy or it has no legs -- callers should
+        keep showing whatever paper account state was last shown, not
+        treat this as an error."""
+        session = self._sessions.get(session_id)
+        strategy_id = next(
+            (w.entity_id for w in session.workspaces if w.workspace == WorkspaceType.TRADING and w.entity_id),
+            "",
+        )
+        if not strategy_id:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, "No active strategy to paper trade",
+            )
+        strategy = self._cache.get_strategy(strategy_id)
+        if strategy is None:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, f"Strategy not found: {strategy_id}",
+            )
+        if not strategy.legs:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.TRADING, "Strategy has no legs to paper trade",
+            )
+
+        now = datetime.now(timezone.utc)
+        for leg in strategy.legs:
+            side = OrderSide.BUY if "BUY" in leg.kind.value else OrderSide.SELL
+            self._engines.paper_trading.service.submit_order(
+                session_id,
+                PaperOrderRequest(
+                    leg=leg, side=side, quantity=abs(leg.quantity),
+                    reference_price=leg.premium, timestamp=now,
+                ),
+            )
+        snapshot: PaperAccountSnapshot = self._engines.paper_trading.service.snapshot(session_id)
+        return WorkspaceOperationResult(
+            True, WorkspaceType.TRADING,
+            f"Paper traded {len(strategy.legs)} leg(s) — equity {snapshot.equity}",
+            snapshot,
+        )
 
     def backtest_strategy(
         self,

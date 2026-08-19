@@ -22,9 +22,11 @@ class MonitorProvider:
         self.cache = MonitorCache()
         self.scheduler = MonitoringScheduler()
         self.rule_engine = RuleEngine(validator=self.validator)
-        self.alert_service = AlertService(event_bus=event_bus)
-        self.recommendation_service = RecommendationService(event_bus=event_bus)
         self.notification_service = NotificationService()
+        self.alert_service = AlertService(
+            event_bus=event_bus, notification_service=self.notification_service,
+        )
+        self.recommendation_service = RecommendationService(event_bus=event_bus)
         self.service = PositionMonitorService(
             self.engine,
             self.validator,

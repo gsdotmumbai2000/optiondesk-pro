@@ -23,6 +23,7 @@ class _FakeMarketViewModel(QObject):
     tick_updated = Signal(dict)
     market_status_changed = Signal(dict)
     option_chain_changed = Signal(list)
+    option_chain_snapshot_changed = Signal(object)
 
     def __init__(self, watchlist: list[str]) -> None:
         super().__init__()

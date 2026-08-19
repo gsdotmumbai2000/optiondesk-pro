@@ -22,6 +22,12 @@ class OptionStrike(BaseModel):
     put_iv: Decimal | None = None
     call_delta: Decimal | None = None
     put_delta: Decimal | None = None
+    call_gamma: Decimal | None = None
+    put_gamma: Decimal | None = None
+    call_theta: Decimal | None = None
+    put_theta: Decimal | None = None
+    call_vega: Decimal | None = None
+    put_vega: Decimal | None = None
     is_atm: bool = False
 
 

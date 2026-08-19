@@ -2,6 +2,7 @@
 
 from app.strategy.models.strategy import Strategy
 from app.strategy_optimizer.models.request import OptimizationRequest
+from app.strategy_optimizer.search.fitness import CandidateFitnessEvaluator
 from app.strategy_optimizer.search.port import SearchAlgorithm
 
 
@@ -17,7 +18,9 @@ class BruteForceSearch:
         self,
         candidates: tuple[Strategy, ...],
         request: OptimizationRequest,
+        fitness: CandidateFitnessEvaluator,
     ) -> tuple[Strategy, ...]:
-        """Return all candidates up to max limit."""
+        """Return all candidates up to max limit (no fitness feedback
+        needed -- downstream evaluate_batch() evaluates every one anyway)."""
         limit = request.preferences.max_candidates
         return candidates[:limit]
