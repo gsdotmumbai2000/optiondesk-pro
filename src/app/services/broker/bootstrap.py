@@ -23,6 +23,7 @@ def build_broker_bundle(
         credential_manager,
         event_bus,
         session_store=session_store,
+        data_directory=data_directory,
     )
     return provider
 

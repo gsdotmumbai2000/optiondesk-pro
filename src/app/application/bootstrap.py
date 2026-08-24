@@ -27,6 +27,7 @@ from app.events.event_bus import EventBus
 from app.live.bootstrap import LiveAnalyticsProvider
 from app.market_data.bootstrap import MarketDataProvider
 from app.services.broker.connection_status_service import ConnectionStatusService
+from app.simulator.recorder.tick_recorder import TickRecorder
 
 
 class ApplicationProvider:
@@ -39,9 +40,11 @@ class ApplicationProvider:
         broker_provider: BrokerProvider | None = None,
         connection_status: ConnectionStatusService | None = None,
         data_directory: Path | None = None,
+        tick_recorder: TickRecorder | None = None,
     ) -> None:
         """Initialize application provider."""
         self.event_bus = event_bus
+        self.tick_recorder = tick_recorder
         self.engines = build_engine_registry(event_bus, market_data, data_directory)
         self.validator = ApplicationValidator()
         self.cache = WorkspaceCache()

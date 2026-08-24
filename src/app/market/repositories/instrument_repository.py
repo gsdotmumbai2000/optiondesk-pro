@@ -26,11 +26,18 @@ class InstrumentRepository:
         self._db_path = data_directory / "config.db"
 
     def initialize(self) -> None:
-        """Load instruments from seed files and optional SQLite cache."""
+        """Load instruments from seed files and optional SQLite cache.
+        Built-in underlyings (loaded from DEFAULT_UNDERLYINGS/seed files)
+        are protected from the SQLite cache: a prior run's close() snapshots
+        whatever was in memory back to SQLite, so without this guard a code
+        change to DEFAULT_UNDERLYINGS (e.g. an NSE lot-size revision) would
+        be silently shadowed by the previous session's stale cached spec on
+        the very next startup."""
         self._instruments.clear()
         self._load_defaults()
         self._load_seed_files()
-        self._load_sqlite()
+        protected_ids = set(self._instruments)
+        self._load_sqlite(skip_ids=protected_ids)
         logger.info(
             "Instrument repository loaded {count} instruments",
             count=len(self._instruments),
@@ -108,8 +115,10 @@ class InstrumentRepository:
                 underlying = UnderlyingMaster.model_validate(record)
                 self.save(InstrumentFactory.from_underlying(underlying))
 
-    def _load_sqlite(self) -> None:
-        """Load instruments from SQLite if present."""
+    def _load_sqlite(self, skip_ids: set[str]) -> None:
+        """Load instruments from SQLite if present, skipping any id already
+        populated from DEFAULT_UNDERLYINGS/seed files -- those are code-
+        controlled and must win over a stale cached snapshot."""
         if not self._db_path.exists():
             return
         query = "SELECT payload FROM market_instruments"
@@ -124,7 +133,10 @@ class InstrumentRepository:
             except json.JSONDecodeError:
                 logger.warning("Skipping invalid instrument payload in SQLite")
                 continue
-            self.save(Instrument.model_validate(data))
+            instrument = Instrument.model_validate(data)
+            if instrument.instrument_id in skip_ids:
+                continue
+            self.save(instrument)
 
     def _save_sqlite(self) -> None:
         """Persist instruments to SQLite."""

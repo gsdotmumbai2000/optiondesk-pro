@@ -1,10 +1,12 @@
 """Application kernel."""
 
+import os
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
 from app.brokers.bootstrap import BrokerProvider
+from app.brokers.shared.enums import BrokerCode
 from app.config.configuration_manager import ConfigurationManager
 from app.core.service_registry import ServiceRegistry
 from app.events.application_events import (ApplicationShuttingDownEvent,
@@ -29,6 +31,8 @@ from app.services.broker.bootstrap import (build_broker_bundle,
                                            build_connection_status_service)
 from app.services.broker.connection_status_service import ConnectionStatusService
 from app.services.service_keys import ServiceKeys
+from app.simulator.player.replay_engine import ReplayEngine, find_latest_recording
+from app.simulator.recorder.tick_recorder import TickRecorder
 from app.ui.application.desktop_app import DesktopApplication
 from app.utils.runtime_paths import application_log_directory
 from app.utils.file_helper import FileHelper
@@ -67,6 +71,8 @@ class ApplicationKernel:
         self.broker_provider: BrokerProvider | None = None
         self._connection_status: ConnectionStatusService | None = None
         self.market_data_provider: MarketDataProvider | None = None
+        self._tick_recorder: TickRecorder | None = None
+        self._replay_engine: ReplayEngine | None = None
 
     def initialize(self) -> None:
         """Initialize all application subsystems."""
@@ -104,6 +110,7 @@ class ApplicationKernel:
             connection_status=self._connection_status,
             market_data=self.market_data_provider,
             data_directory=data_dir,
+            tick_recorder=self._tick_recorder,
         )
         self._running = True
         self.event_bus.publish(
@@ -146,6 +153,8 @@ class ApplicationKernel:
             self.repository_factory.close()
         if self.market_master_provider is not None:
             self.market_master_provider.shutdown()
+        if self._replay_engine is not None:
+            self._replay_engine.stop()
         if self.market_data_provider is not None:
             self.market_data_provider.stop()
         if self.health_monitor is not None:
@@ -293,6 +302,37 @@ class ApplicationKernel:
             instrument_service=self.market_master_provider.instrument_service,
         )
         self.market_data_provider.start()
+        self._bootstrap_simulator(data_dir)
+
+    def _bootstrap_simulator(self, data_dir: Path) -> None:
+        """Start NIFTY tick recording or replay, depending on broker/config."""
+        assert self.broker_provider is not None
+        assert self.event_bus is not None
+        assert self.market_data_provider is not None
+        broker_code = self.broker_provider.broker.broker_code
+        recordings_dir = data_dir / "simulator" / "recordings"
+
+        if broker_code == BrokerCode.SIMULATOR:
+            recording_path = find_latest_recording(recordings_dir)
+            if recording_path is None:
+                logger.warning(
+                    "Simulator broker selected but no recordings found in {dir}; "
+                    "run with RECORD_MARKET_DATA=1 against the real broker during "
+                    "market hours first",
+                    dir=recordings_dir,
+                )
+                return
+            # The simulator needs no real login, so DesktopApplication
+            # auto-connects it once the UI/viewmodels exist (see
+            # DesktopApplication._activate_simulator_broker) -- doing it here
+            # instead would publish BrokerConnectedEvent before anything has
+            # subscribed to it, silently skipping the option-chain auto-load
+            # that normally follows a broker connection.
+            self._replay_engine = ReplayEngine(self.market_data_provider.dispatcher, recording_path)
+            self._replay_engine.start()
+        elif os.environ.get("RECORD_MARKET_DATA", "").strip().lower() in {"1", "true", "yes"}:
+            self._tick_recorder = TickRecorder(self.event_bus, recordings_dir)
+            self._tick_recorder.start()
 
     def _bootstrap_broker(self) -> None:
         """Initialize broker provider and connection status."""

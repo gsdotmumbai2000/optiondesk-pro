@@ -8,6 +8,7 @@ from app.payoff.analytics.expiry_payoff import total_expiry_pnl
 from app.payoff.analytics.payoff_curve import build_payoff_curve
 from app.payoff.analytics.risk_reward import risk_reward_ratio as calc_risk_reward
 from app.payoff.analytics.risk_table import build_risk_table, curve_extrema
+from app.payoff.analytics.today_payoff import build_today_curve, total_today_pnl
 from app.payoff.models.enums import PayoffModelVersion
 from app.payoff.models.request import PayoffAnalysisRequest
 from app.payoff.models.result import PayoffResult
@@ -23,9 +24,10 @@ class PayoffCalculator:
         spot = ctx.spot_price
         probability = request.probability_result
 
-        current_pnl = total_expiry_pnl(spot, legs)
-        expiry_pnl = current_pnl
+        current_pnl = total_today_pnl(spot, legs, ctx)
+        expiry_pnl = total_expiry_pnl(spot, legs)
         curve = build_payoff_curve(legs, ctx)
+        today_curve = build_today_curve(legs, ctx)
         max_gain, max_loss = curve_extrema(curve)
         breakevens = find_breakevens(curve)
         risk_table = build_risk_table(curve)
@@ -50,4 +52,5 @@ class PayoffCalculator:
             probability_weighted_pnl=probability_weighted,
             calculation_timestamp=datetime.now(timezone.utc),
             model_version=PayoffModelVersion.V1,
+            today_curve=today_curve,
         )

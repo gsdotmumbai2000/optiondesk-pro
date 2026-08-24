@@ -139,7 +139,7 @@ class LiveAnalyticsService:
         try:
             ctx = self._context_builder.build_context(key)
             contract = self._context_builder.build_contract(key, ctx)
-            option_chain = self._context_builder.build_option_chain(key)
+            option_chain = self._context_builder.build_option_chain(key, ctx)
             market_snapshot = self._context_builder.build_market_snapshot(key, ctx)
             chain_market_snapshot = self._context_builder.build_chain_market_snapshot(key, ctx)
             volatility_market_snapshot = self._context_builder.build_volatility_snapshot(key, ctx)

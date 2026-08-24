@@ -10,6 +10,7 @@ from app.ui.option_chain.option_chain_view import OptionChainView
 from app.ui.viewmodels.market_viewmodel import MarketViewModel
 from app.ui.widgets.common import DataTableWidget, SectionHeader
 from app.ui.widgets.live_price_widget import LivePriceWidget
+from app.utils.datetime_helper import DateTimeHelper
 
 _WATCHLIST_HEADERS = ("Symbol", "LTP", "Change", "Updated")
 logger = get_logger(__name__)
@@ -90,7 +91,18 @@ class MarketView(QWidget):
             return
         self._watchlist_model.setItem(row, 1, QStandardItem(str(tick.get("ltp", "—"))))
         self._watchlist_model.setItem(row, 2, QStandardItem(str(tick.get("change", "—"))))
-        self._watchlist_model.setItem(row, 3, QStandardItem(str(tick.get("timestamp", "—"))))
+        self._watchlist_model.setItem(row, 3, QStandardItem(self._format_ist_time(tick.get("timestamp"))))
+
+    @staticmethod
+    def _format_ist_time(timestamp: str | None) -> str:
+        if not timestamp:
+            return "—"
+        try:
+            utc_dt = DateTimeHelper.parse_iso(timestamp)
+            ist_dt = DateTimeHelper.to_local(utc_dt)
+            return ist_dt.strftime("%d-%m-%Y %H:%M:%S")
+        except ValueError:
+            return "—"
 
     def _on_market_status(self, payload: dict) -> None:
         status = str(payload.get("status", "—"))

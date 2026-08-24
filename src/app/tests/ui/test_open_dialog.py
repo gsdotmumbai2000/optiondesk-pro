@@ -3,7 +3,7 @@ free-text id box -- the caller (Strategy Builder's Load button, ribbon's
 Open button) already knows the valid ids from list_strategies()."""
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.ui.dialogs.open_dialog import OpenDialog
 
@@ -39,3 +39,56 @@ class TestOpenDialogSelection:
 
         assert dialog._list.item(0).text() == "strat-1"
         assert dialog.selected_id() == "strat-1"
+
+
+class TestOpenDialogDelete:
+    def test_no_delete_button_wired_without_callback(self, qapp: QApplication) -> None:
+        dialog = OpenDialog([("a", "Iron Condor")])
+
+        assert dialog._on_delete is None
+
+    def test_confirmed_delete_calls_callback_and_removes_row(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        deleted: list[str] = []
+        dialog = OpenDialog(
+            [("a", "Iron Condor"), ("b", "Straddle")],
+            on_delete=lambda item_id: deleted.append(item_id) or True,
+        )
+        monkeypatch.setattr(
+            QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes,
+        )
+
+        dialog._delete_selected()
+
+        assert deleted == ["a"]
+        assert dialog._list.count() == 1
+        assert dialog.selected_id() == "b"
+
+    def test_declined_confirmation_does_not_delete(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        deleted: list[str] = []
+        dialog = OpenDialog(
+            [("a", "Iron Condor")],
+            on_delete=lambda item_id: deleted.append(item_id) or True,
+        )
+        monkeypatch.setattr(
+            QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No,
+        )
+
+        dialog._delete_selected()
+
+        assert deleted == []
+        assert dialog._list.count() == 1
+
+    def test_failed_delete_keeps_row(self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+        dialog = OpenDialog([("a", "Iron Condor")], on_delete=lambda item_id: False)
+        monkeypatch.setattr(
+            QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes,
+        )
+        monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+
+        dialog._delete_selected()
+
+        assert dialog._list.count() == 1

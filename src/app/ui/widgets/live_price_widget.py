@@ -3,6 +3,8 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QGridLayout, QLabel, QWidget
 
+from app.utils.datetime_helper import DateTimeHelper
+
 
 class LivePriceWidget(QWidget):
     """Display live spot price, change, and last update time."""
@@ -43,7 +45,18 @@ class LivePriceWidget(QWidget):
             f"{change_pct}%" if change_pct is not None else "—"
         )
         self._status.setText(f"{symbol} | Live")
-        self._updated.setText(f"Last update: {timestamp or '—'}")
+        self._updated.setText(f"Last update: {self._format_ist_time(timestamp)}")
+
+    @staticmethod
+    def _format_ist_time(timestamp: str | None) -> str:
+        if not timestamp:
+            return "—"
+        try:
+            utc_dt = DateTimeHelper.parse_iso(timestamp)
+            ist_dt = DateTimeHelper.to_local(utc_dt)
+            return ist_dt.strftime("%d-%m-%Y %H:%M:%S")
+        except ValueError:
+            return "—"
 
     def set_market_status(self, status: str) -> None:
         """Update market status label."""

@@ -29,6 +29,7 @@ class MarketDataProvider:
         self.engine = self._engine.provider.engine
         self.service: MarketDataService = self._engine.bundle.market_data
         self.bundle: MarketDataServiceBundle = self._engine.bundle
+        self.dispatcher = self._engine.provider.dispatcher
 
     def start(self) -> None:
         """Start market data engine."""

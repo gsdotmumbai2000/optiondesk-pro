@@ -10,6 +10,7 @@ from app.ui.docking.dock_manager import DockManager
 from app.ui.notifications.desktop_toast_channel import DesktopToastChannel
 from app.ui.widgets.connection_indicator import ConnectionIndicator
 from app.ui.widgets.market_status_indicator import MarketStatusIndicator
+from app.ui.widgets.recording_indicator import RecordingIndicator
 from app.ui.main_window.ribbon_bar import build_ribbon
 from app.ui.models.ui_enums import UIWorkspaceId
 from app.ui.navigation.navigation_pane import NavigationPane
@@ -134,14 +135,18 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self._status)
         self._connection_indicator = ConnectionIndicator(self)
         self._market_status_indicator = MarketStatusIndicator(self)
+        self._recording_indicator = RecordingIndicator(self)
         self._last_tick_time = "—"
         self._status.addPermanentWidget(self._connection_indicator)
         self._status.addPermanentWidget(self._market_status_indicator)
+        self._status.addPermanentWidget(self._recording_indicator)
         self._broker_vm.status_changed.connect(self._on_broker_status)
         self._market_vm.market_status_changed.connect(self._on_market_status_bar)
         self._market_vm.tick_updated.connect(self._on_tick_status_bar)
+        self._ctx.events.recording_tick_captured.connect(self._on_recording_tick)
         self._broker_vm.refresh_status()
         self._market_vm.refresh()
+        self._init_recording_indicator()
         for vm in (
             self._trading_vm,
             self._market_vm,
@@ -201,6 +206,21 @@ class MainWindow(QMainWindow):
             connected = self._market_vm.connection_status
             last_tick = self._market_vm.last_update
         self._market_status_indicator.update_status(market, last_tick, connected)
+
+    def _init_recording_indicator(self) -> None:
+        """Show the badge immediately if recording started before the UI existed.
+
+        TickRecorder.start() (and its one-shot start signal, if it fired one)
+        runs during kernel initialize(), before MainWindow/UIEventBridge
+        exist, so the initial state has to be pulled here rather than
+        pushed via an event the bridge would have missed.
+        """
+        recorder = self._ctx.provider.tick_recorder
+        if recorder is not None:
+            self._recording_indicator.set_recording(True, recorder.tick_count)
+
+    def _on_recording_tick(self, payload: dict) -> None:
+        self._recording_indicator.set_recording(True, int(payload.get("tick_count", 0)))
 
     def _show_broker_login(self) -> None:
         dialog = BrokerLoginDialog(self._broker_vm, self)

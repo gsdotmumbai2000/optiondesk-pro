@@ -97,6 +97,23 @@ class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMar
             created,
         )
 
+    def set_active_draft_strategy(
+        self,
+        session_id: str,
+        strategy: Strategy,
+    ) -> WorkspaceOperationResult:
+        """Register the given strategy (typically the Strategy Builder's
+        in-progress legs, not yet saved) as this session's active Trading
+        strategy -- cache + session state only, no repository write -- so
+        Evaluate/Optimize/Refresh Margin/Paper Trade can find it without
+        requiring an explicit Save first. Safe to call on every Evaluate
+        click: unlike create_strategy(), this never adds a row to the saved
+        strategy repository, so repeatedly evaluating an unsaved draft
+        never clutters the Strategy List."""
+        self._cache.put_strategy(strategy.strategy_id, strategy)
+        self._sessions.set_active_workspace(session_id, WorkspaceType.TRADING, strategy.strategy_id)
+        return WorkspaceOperationResult(True, WorkspaceType.TRADING, "Draft strategy active", strategy)
+
     def list_underlyings(self) -> WorkspaceOperationResult:
         """List known underlyings (index instruments) for the strategy leg
         builder -- pure Instrument Master lookup, no broker call."""

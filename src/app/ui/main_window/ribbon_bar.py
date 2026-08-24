@@ -21,7 +21,7 @@ def build_ribbon(
         """Show a picker of saved strategies and load the selected one
         into the builder (mirrors the Strategy Builder view's own Load
         button -- this is the ribbon's global shortcut to the same flow)."""
-        dialog = OpenDialog(trading_vm.list_strategies(), parent)
+        dialog = OpenDialog(trading_vm.list_strategies(), parent, on_delete=trading_vm.delete_strategy)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             trading_vm.load_strategy(dialog.selected_id())
 

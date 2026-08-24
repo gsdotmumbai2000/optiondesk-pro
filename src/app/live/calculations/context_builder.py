@@ -38,11 +38,24 @@ class LiveContextBuilder:
             key.expiry_date,
         )
 
-    def build_option_chain(self, key: ChainKey):
+    def build_option_chain(self, key: ChainKey, context: CalculationContext):
+        """Prefer the tick-driven live chain (freshest); fall back to the
+        REST-loaded chain snapshot already resolved onto `context`
+        (context.option_chain_snapshot, populated by
+        CalculationContextFactory.build() via a broker REST call, not live
+        ticks) when no tick has streamed in for this chain yet -- e.g. the
+        market is closed, or this is called right after subscribing.
+        Real trading platforms evaluate strategies off last-known/REST
+        prices when the market is closed; requiring a live tick stream
+        made Evaluate/Optimize unusable in that case even though the same
+        chain data was already available. Only raises when neither source
+        has anything."""
         chain = self._chain_manager.get_chain(key)
-        if chain is None:
-            raise ValueError(f"Live chain unavailable: {key.cache_key()}")
-        return ChainBuilder.to_snapshot(chain)
+        if chain is not None:
+            return ChainBuilder.to_snapshot(chain)
+        if context.option_chain_snapshot is not None:
+            return context.option_chain_snapshot
+        raise ValueError(f"Live chain unavailable: {key.cache_key()}")
 
     def build_contract(self, key: ChainKey, context: CalculationContext) -> OptionContract:
         return OptionContract(

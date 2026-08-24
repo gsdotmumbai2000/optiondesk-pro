@@ -31,7 +31,7 @@ class LiveCalculationPipeline:
     def _execute(self, key: ChainKey) -> LiveAnalyticsSnapshot:
         ctx = self._context_builder.build_context(key)
         contract = self._context_builder.build_contract(key, ctx)
-        option_chain = self._context_builder.build_option_chain(key)
+        option_chain = self._context_builder.build_option_chain(key, ctx)
         market_snapshot = self._context_builder.build_market_snapshot(key, ctx)
         chain_market = self._context_builder.build_chain_market_snapshot(key, ctx)
         vol_market = self._context_builder.build_volatility_snapshot(key, ctx)
@@ -109,6 +109,7 @@ class LiveCalculationPipeline:
             underlying=key.underlying,
             exchange=key.exchange,
             expiry_date=key.expiry_date,
+            spot_price=ctx.spot_price,
             pricing=pricing,
             greeks=greeks,
             volatility=volatility,

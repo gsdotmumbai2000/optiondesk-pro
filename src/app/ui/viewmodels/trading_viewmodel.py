@@ -60,10 +60,19 @@ class TradingViewModel(BaseViewModel):
         self.status_message = "Trading workspace refreshed"
 
     def evaluate(self) -> None:
-        """Recompute and publish payoff/Greeks for the active strategy by
-        synchronously refreshing live analytics for its chain, in the
-        background (the same live engines the tick pipeline uses, just run
-        on demand rather than racing it)."""
+        """Recompute and publish payoff/Greeks for the strategy currently
+        in the builder, by synchronously refreshing live analytics for its
+        chain, in the background (the same live engines the tick pipeline
+        uses, just run on demand rather than racing it).
+
+        Registers the builder's current legs as this session's active
+        strategy first (cache-only, not persisted -- see
+        set_active_draft_strategy) so Evaluate works on whatever's in the
+        leg table right now, whether loaded from a saved strategy or still
+        unsaved -- it shouldn't require clicking Save first just to
+        preview one."""
+        if not self._register_builder_as_active_strategy():
+            return
         self.busy = True
 
         def work():
@@ -84,6 +93,24 @@ class TradingViewModel(BaseViewModel):
             self.set_error(msg)
 
         self._ctx.worker.run(work, done, err)
+
+    def _register_builder_as_active_strategy(self) -> bool:
+        """Make the builder's current legs this session's active Trading
+        strategy (see TradingWorkspaceService.set_active_draft_strategy)
+        so Evaluate/Optimize/Refresh Margin/Paper Trade can find them.
+        Returns False (with a status message) when there are no legs to
+        register -- callers should not proceed to their own action."""
+        legs = self._leg_builder.legs
+        if not legs:
+            self.status_message = "Add at least one leg before evaluating"
+            return False
+        strategy = self._leg_builder.build()
+        strategy = replace(
+            strategy,
+            metadata=replace(strategy.metadata, recognized_type=recognize_strategy(legs)),
+        )
+        self._ctx.provider.trading.set_active_draft_strategy(self._ctx.session_id, strategy)
+        return True
 
     def refresh_margin(self) -> None:
         """Fetch real broker margin for the active strategy in the
@@ -287,6 +314,15 @@ class TradingViewModel(BaseViewModel):
         self._strategy_name = strategy.metadata.name
         self.strategy_name_changed.emit(self._strategy_name)
         self.status_message = trading_result.message
+
+    def delete_strategy(self, strategy_id: str) -> bool:
+        """Delete a saved strategy (used by the Open dialog's Delete button,
+        both from the ribbon and the builder's own Load button). Returns
+        whether the delete succeeded, so the dialog can drop the row from
+        its list only on success."""
+        result = self._ctx.provider.strategy.delete_strategy(self._ctx.session_id, strategy_id)
+        self.status_message = result.message
+        return result.success
 
     def generate_recommendation(self) -> None:
         """Trigger AI recommendation flow."""

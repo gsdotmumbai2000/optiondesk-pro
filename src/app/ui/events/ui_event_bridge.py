@@ -19,6 +19,7 @@ from app.market_data.diagnostics import log_tick_diagnostic
 from app.market_data.events import (MarketClosedEvent, MarketOpenedEvent,
                                     QuoteUpdatedEvent, TickReceivedEvent)
 from app.monitor.events import AlertRaisedEvent
+from app.simulator.events import RecordingTickCapturedEvent
 
 logger = get_logger(__name__)
 
@@ -41,6 +42,7 @@ class UIEventBridge(QObject):
     market_opened = Signal(dict)
     market_closed = Signal(dict)
     option_chain_updated = Signal(dict)
+    recording_tick_captured = Signal(dict)
 
     def __init__(self, event_bus: EventBus | None, parent: QObject | None = None) -> None:
         """Initialize bridge."""
@@ -67,6 +69,7 @@ class UIEventBridge(QObject):
         self._bus.subscribe(MarketClosedEvent, self._on_market_closed)
         self._bus.subscribe(QuoteUpdatedEvent, self._on_quote_updated)
         self._bus.subscribe(LiveOptionChainUpdatedEvent, self._on_option_chain_updated)
+        self._bus.subscribe(RecordingTickCapturedEvent, self._on_recording_tick_captured)
 
     def _on_portfolio(self, event: PortfolioLoadedEvent) -> None:
         self.portfolio_updated.emit(event.payload)
@@ -117,6 +120,9 @@ class UIEventBridge(QObject):
 
     def _on_option_chain_updated(self, event: LiveOptionChainUpdatedEvent) -> None:
         self.option_chain_updated.emit(event.payload)
+
+    def _on_recording_tick_captured(self, event: RecordingTickCapturedEvent) -> None:
+        self.recording_tick_captured.emit(event.payload)
 
     def emit_market_update(self, payload: dict) -> None:
         """Emit market update for UI refresh."""

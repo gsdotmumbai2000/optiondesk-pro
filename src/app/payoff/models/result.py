@@ -54,3 +54,4 @@ class PayoffResult:
     probability_weighted_pnl: Decimal | None
     calculation_timestamp: datetime
     model_version: PayoffModelVersion = PayoffModelVersion.V1
+    today_curve: PayoffCurve = PayoffCurve()

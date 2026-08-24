@@ -24,12 +24,20 @@ class MarketStatusDetector:
         *,
         exchange: str = "NSE",
         holidays: set[str] | None = None,
+        always_open: bool = False,
     ) -> None:
-        """Initialize detector."""
+        """Initialize detector.
+
+        ``always_open`` bypasses the real IST wall-clock/weekday/holiday
+        check for the simulator broker, which replays ticks after hours and
+        would otherwise always be reported CLOSED regardless of whether it
+        is actively streaming.
+        """
         self._broker = broker
         self._websocket = websocket
         self._exchange = exchange
         self._holidays = holidays or set()
+        self._always_open = always_open
 
     def detect(self) -> MarketStatusSnapshot:
         """Return current market status."""
@@ -43,6 +51,8 @@ class MarketStatusDetector:
             return MarketStatusSnapshot(
                 LiveMarketStatus.CONNECTION_LOST, self._exchange, trade_date
             )
+        if self._always_open:
+            return MarketStatusSnapshot(LiveMarketStatus.OPEN, self._exchange, trade_date)
         if trade_date in self._holidays or now.weekday() >= 5:
             return MarketStatusSnapshot(
                 LiveMarketStatus.HOLIDAY, self._exchange, trade_date, is_holiday=True

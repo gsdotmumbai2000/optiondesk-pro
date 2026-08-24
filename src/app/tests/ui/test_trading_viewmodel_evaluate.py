@@ -1,9 +1,16 @@
 """Tests for TradingViewModel.evaluate(): the "Evaluate" action wired to
 TradingWorkspaceService.evaluate_active_strategy(), run off the Qt UI thread
 via BackgroundWorker and published to the view via evaluation_changed.
+
+Evaluate first registers the builder's current legs as this session's
+active strategy (set_active_draft_strategy -- cache-only, not persisted)
+so it works on whatever's in the leg table without requiring an explicit
+Save first; only then does it dispatch evaluate_active_strategy() to the
+background worker.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -12,6 +19,8 @@ from PySide6.QtWidgets import QApplication
 from app.application.models.enums import WorkspaceType
 from app.application.models.workspace import WorkspaceOperationResult
 from app.live.models.analytics import LiveAnalyticsSnapshot
+from app.strategy.models.enums import LegKind
+from app.strategy.models.leg import StrategyLeg
 from app.ui.viewmodels.context import ViewModelContext
 from app.ui.viewmodels.trading_viewmodel import TradingViewModel
 
@@ -48,10 +57,22 @@ class _FakeTradingService:
     def __init__(self, result: WorkspaceOperationResult) -> None:
         self.result = result
         self.calls: list[str] = []
+        self.registered_drafts: list = []
+
+    def set_active_draft_strategy(self, session_id: str, strategy) -> WorkspaceOperationResult:
+        self.registered_drafts.append((session_id, strategy))
+        return WorkspaceOperationResult(True, WorkspaceType.TRADING, "Draft strategy active", strategy)
 
     def evaluate_active_strategy(self, session_id: str, exchange: str = "NFO") -> WorkspaceOperationResult:
         self.calls.append(session_id)
         return self.result
+
+
+def _leg() -> StrategyLeg:
+    return StrategyLeg(
+        leg_id="L1", kind=LegKind.CALL_BUY, quantity=1, premium=Decimal("100"),
+        strike=Decimal("24500"), expiry=date(2026, 8, 18), underlying="NIFTY", exchange="NFO",
+    )
 
 
 def _snapshot() -> LiveAnalyticsSnapshot:
@@ -61,12 +82,39 @@ def _snapshot() -> LiveAnalyticsSnapshot:
     )
 
 
-def _make_viewmodel(trading: _FakeTradingService) -> tuple[TradingViewModel, _FakeWorker]:
+def _make_viewmodel(trading: _FakeTradingService, with_leg: bool = True) -> tuple[TradingViewModel, _FakeWorker]:
     provider = SimpleNamespace(trading=trading)
     worker = _FakeWorker()
     ctx = ViewModelContext(provider=provider, worker=worker, events=SimpleNamespace(), session_id="s1")
     vm = TradingViewModel(ctx)
+    if with_leg:
+        vm.add_leg(_leg())
     return vm, worker
+
+
+class TestEvaluateRegistersTheBuilderAsTheActiveStrategyFirst:
+    def test_registers_the_builders_current_legs_before_dispatching(self, qapp: QApplication) -> None:
+        result = WorkspaceOperationResult(True, WorkspaceType.TRADING, "Strategy evaluated", _snapshot())
+        trading = _FakeTradingService(result)
+        vm, _worker = _make_viewmodel(trading)
+
+        vm.evaluate()
+
+        assert len(trading.registered_drafts) == 1
+        session_id, strategy = trading.registered_drafts[0]
+        assert session_id == "s1"
+        assert strategy.legs == (_leg(),)
+
+    def test_no_legs_shows_a_status_message_and_never_dispatches(self, qapp: QApplication) -> None:
+        result = WorkspaceOperationResult(True, WorkspaceType.TRADING, "Strategy evaluated", _snapshot())
+        trading = _FakeTradingService(result)
+        vm, worker = _make_viewmodel(trading, with_leg=False)
+
+        vm.evaluate()
+
+        assert vm.status_message == "Add at least one leg before evaluating"
+        assert worker.calls == []
+        assert trading.registered_drafts == []
 
 
 class TestEvaluateSuccess:
@@ -150,6 +198,9 @@ class TestEvaluateUnavailableFallsBackGracefully:
 class TestEvaluateErrorPath:
     def test_service_exception_sets_error_not_crash(self, qapp: QApplication) -> None:
         class _RaisingTradingService:
+            def set_active_draft_strategy(self, session_id: str, strategy):
+                return WorkspaceOperationResult(True, WorkspaceType.TRADING, "Draft strategy active", strategy)
+
             def evaluate_active_strategy(self, session_id: str, exchange: str = "NFO"):
                 raise RuntimeError("chain manager unavailable")
 
@@ -157,6 +208,7 @@ class TestEvaluateErrorPath:
         worker = _FakeWorker()
         ctx = ViewModelContext(provider=provider, worker=worker, events=SimpleNamespace(), session_id="s1")
         vm = TradingViewModel(ctx)
+        vm.add_leg(_leg())
         errors: list[str] = []
         vm.error_occurred.connect(errors.append)
 

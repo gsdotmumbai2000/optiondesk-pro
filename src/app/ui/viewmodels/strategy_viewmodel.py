@@ -77,5 +77,14 @@ class StrategyViewModel(BaseViewModel):
     def save(self) -> None:
         self.status_message = "Save strategy from builder"
 
+    def delete_strategy(self, strategy_id: str) -> None:
+        """Delete a saved strategy and refresh the list. Refresh runs first
+        so its own status message ("N strategies") doesn't clobber the more
+        specific delete outcome shown to the user."""
+        result = self._ctx.provider.strategy.delete_strategy(self._ctx.session_id, strategy_id)
+        if result.success:
+            self.refresh()
+        self.status_message = result.message
+
     def _on_strategy_updated(self, _payload: dict) -> None:
         self.refresh()

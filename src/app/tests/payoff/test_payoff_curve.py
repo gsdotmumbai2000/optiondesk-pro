@@ -5,7 +5,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from app.payoff.analytics.expiry_payoff import total_expiry_pnl
-from app.payoff.analytics.payoff_curve import build_payoff_curve
+from app.payoff.analytics.payoff_curve import DEFAULT_SAMPLES, build_payoff_curve
 from app.payoff.models.legs import StrategyLeg
 from app.pricing.models.enums import OptionType
 
@@ -41,11 +41,15 @@ class TestPriceBounds:
 
 
 class TestPointSampling:
-    def test_default_sample_count_is_21_points(self) -> None:
+    def test_default_sample_count_matches_default_samples(self) -> None:
+        """Strike (100) coincides exactly with a grid point here (evenly
+        spaced 70..130), so no extra point is injected -- count matches
+        DEFAULT_SAMPLES exactly. See TestStrikeInjection for the case
+        where it doesn't coincide."""
         legs = (_leg(OptionType.CALL, Decimal("100")),)
         curve = build_payoff_curve(legs, _context(Decimal("100")))
 
-        assert len(curve.points) == 21
+        assert len(curve.points) == DEFAULT_SAMPLES
 
     def test_custom_sample_count_is_honored(self) -> None:
         legs = (_leg(OptionType.CALL, Decimal("100")),)
@@ -71,6 +75,38 @@ class TestPointSampling:
 
         for point in curve.points:
             assert point.pnl == total_expiry_pnl(point.underlying_price, legs)
+
+
+class TestStrikeInjection:
+    """Regression coverage for the chart-overshoot bug: a wide auto-scaled
+    price range with a sparse grid can land zero sample points inside a
+    narrow strike gap, which visibly distorts a spline-rendered curve near
+    that strike -- each leg's exact strike must always be a sample point."""
+
+    def test_strike_not_on_grid_is_injected_as_extra_point(self) -> None:
+        """Bull call spread (100/110) at spot 105: low=70, high=143, and
+        neither strike lands exactly on the evenly-spaced 21-point grid."""
+        legs = (_leg(OptionType.CALL, Decimal("100")), _leg(OptionType.CALL, Decimal("110")))
+        curve = build_payoff_curve(legs, _context(Decimal("105")), samples=21)
+
+        prices = {point.underlying_price for point in curve.points}
+        assert Decimal("100") in prices
+        assert Decimal("110") in prices
+        assert len(curve.points) > 21  # both strikes added as extras
+
+    def test_strike_already_on_grid_adds_no_duplicate(self) -> None:
+        legs = (_leg(OptionType.CALL, Decimal("100")),)
+        curve = build_payoff_curve(legs, _context(Decimal("100")), samples=21)
+
+        assert len(curve.points) == 21
+
+    def test_out_of_range_strike_is_not_injected(self) -> None:
+        """A leg with strike=0 (synthetic) falls outside [low, high] and
+        must not be injected as a sample point."""
+        legs = (_leg(OptionType.CALL, Decimal("0")),)
+        curve = build_payoff_curve(legs, _context(Decimal("100")), samples=21)
+
+        assert len(curve.points) == 21
 
 
 class TestEmptyOrDegenerateInputs:

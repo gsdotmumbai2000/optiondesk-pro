@@ -21,6 +21,7 @@ class LiveAnalyticsSnapshot:
     underlying: str
     exchange: str
     expiry_date: str
+    spot_price: Decimal | None = None
     pricing: PricingResult | None = None
     greeks: GreeksResult | None = None
     volatility: VolatilityResult | None = None

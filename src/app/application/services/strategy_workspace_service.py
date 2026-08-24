@@ -87,6 +87,22 @@ class StrategyWorkspaceService(MarketDataSupport, LiveAnalyticsSupport):
             created,
         )
 
+    def delete_strategy(self, session_id: str, strategy_id: str) -> WorkspaceOperationResult:
+        """Delete strategy by id."""
+        deleted = self._engines.strategy.service.delete(strategy_id)
+        if not deleted:
+            return WorkspaceOperationResult(
+                False,
+                WorkspaceType.STRATEGY,
+                f"Strategy not found: {strategy_id}",
+            )
+        self._cache.invalidate(strategy_id)
+        return WorkspaceOperationResult(
+            True,
+            WorkspaceType.STRATEGY,
+            "Strategy deleted",
+        )
+
     def list_strategies(self, session_id: str) -> WorkspaceOperationResult:
         """List all strategies."""
         strategies = self._engines.strategy.repository.list_all()

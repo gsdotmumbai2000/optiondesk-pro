@@ -1,9 +1,11 @@
 """Tests for AddLegDialog's strike-chain picker: strike/premium/OI/Delta
 come from Market workspace's already-loaded option chain snapshot. Each
-row's Call/Put cell carries a "B"/"S" button pair -- clicking one picks
-that strike, side (Call/Put), and Buy/Sell direction all in one action,
-replacing the old separate Side (Buy/Sell) dropdown. Delta columns only
-appear when the Settings show_greeks_in_leg_picker preference is on.
+row's Call/Put cell carries a "B"/"S" button pair -- clicking one stages
+that strike/side/direction as a leg in the pending-legs list below the
+chain (rather than replacing a single in-progress selection), so several
+legs can be picked in one dialog session; "Add Legs" commits all of them
+at once. Delta columns only appear when the Settings
+show_greeks_in_leg_picker preference is on.
 
 Row shape matches OptionStrike.model_dump(mode="json") (the exact payload
 TradingWorkspaceService.leg_chain_strikes() returns, read straight from
@@ -121,69 +123,94 @@ class TestChainPopulation:
 
 
 class TestStrikeSelectionByButton:
-    def test_clicking_call_buy_selects_ce_buy(self, qapp: QApplication) -> None:
+    def test_clicking_call_buy_stages_a_ce_buy_leg(self, qapp: QApplication) -> None:
+        from app.strategy.models.enums import LegKind
+
         dialog, _vm = _make_dialog((_strike_row("24500", call_ltp="135.5"),))
 
         dialog._on_side_selected(0, "CE", "Buy")
 
-        assert dialog._selected_right == "CE"
-        assert dialog._selected_side == "Buy"
-        assert dialog._selected_strike == Decimal("24500")
-        assert dialog._selected_premium == Decimal("135.5")
+        assert len(dialog._pending_legs) == 1
+        leg = dialog._pending_legs[0]
+        assert leg.kind == LegKind.CALL_BUY
+        assert leg.strike == Decimal("24500")
+        assert leg.premium == Decimal("135.5")
 
-    def test_clicking_put_sell_selects_pe_sell(self, qapp: QApplication) -> None:
+    def test_clicking_put_sell_stages_a_pe_sell_leg(self, qapp: QApplication) -> None:
+        from app.strategy.models.enums import LegKind
+
         dialog, _vm = _make_dialog((_strike_row("24500", put_ltp="88.25"),))
 
         dialog._on_side_selected(0, "PE", "Sell")
 
-        assert dialog._selected_right == "PE"
-        assert dialog._selected_side == "Sell"
-        assert dialog._selected_strike == Decimal("24500")
-        assert dialog._selected_premium == Decimal("88.25")
+        assert len(dialog._pending_legs) == 1
+        leg = dialog._pending_legs[0]
+        assert leg.kind == LegKind.PUT_SELL
+        assert leg.strike == Decimal("24500")
+        assert leg.premium == Decimal("88.25")
 
-    def test_selecting_a_side_with_no_ltp_shows_an_error(self, qapp: QApplication) -> None:
+    def test_selecting_a_side_with_no_ltp_shows_an_error_and_stages_nothing(self, qapp: QApplication) -> None:
         row = _strike_row("24500", call_ltp=None)
         dialog, _vm = _make_dialog((row,))
 
         dialog._on_side_selected(0, "CE", "Buy")
 
-        assert dialog._selected_right is None
+        assert dialog._pending_legs == []
         assert not dialog._error.isHidden()
 
-    def test_selection_label_reflects_the_choice(self, qapp: QApplication) -> None:
+    def test_clicking_two_rows_stages_both_legs(self, qapp: QApplication) -> None:
+        dialog, _vm = _make_dialog((_strike_row("24500", call_ltp="135.5", put_ltp="88.25"),))
+
+        dialog._on_side_selected(0, "CE", "Buy")
+        dialog._on_side_selected(0, "PE", "Sell")
+
+        assert len(dialog._pending_legs) == 2
+        assert dialog._legs_table.rowCount() == 2
+
+    def test_legs_summary_reflects_staged_count(self, qapp: QApplication) -> None:
         dialog, _vm = _make_dialog((_strike_row("24500", call_ltp="135.5"),))
 
         dialog._on_side_selected(0, "CE", "Buy")
 
-        assert "Buy CE 24500" in dialog._selection_label.text()
+        assert "1 leg staged" in dialog._legs_summary.text()
 
+    def test_staged_leg_uses_the_current_quantity(self, qapp: QApplication) -> None:
+        dialog, _vm = _make_dialog((_strike_row("24500", call_ltp="135.5"),))
+        dialog._quantity.setValue(3)
 
-class TestAddingTheSelectedLeg:
-    def test_ok_with_a_selected_strike_adds_the_leg(self, qapp: QApplication) -> None:
-        dialog, vm = _make_dialog((_strike_row("24500", call_ltp="135.5"),))
         dialog._on_side_selected(0, "CE", "Buy")
 
-        dialog._on_add()
+        assert dialog._pending_legs[0].quantity == 3
 
-        assert len(vm.added_legs) == 1
-        leg = vm.added_legs[0]
-        assert leg.strike == Decimal("24500")
-        assert leg.premium == Decimal("135.5")
-        assert leg.multiplier == 75
-        assert leg.underlying == "NIFTY"
-        assert leg.expiry == _EXPIRY
 
-    def test_selling_a_put_produces_the_correct_leg_kind(self, qapp: QApplication) -> None:
-        from app.strategy.models.enums import LegKind
+class TestRemovingAStagedLeg:
+    def test_removes_the_leg_at_the_given_index(self, qapp: QApplication) -> None:
+        dialog, _vm = _make_dialog((_strike_row("24500", call_ltp="135.5", put_ltp="88.25"),))
+        dialog._on_side_selected(0, "CE", "Buy")
+        dialog._on_side_selected(0, "PE", "Sell")
 
-        dialog, vm = _make_dialog((_strike_row("24500", put_ltp="88.25"),))
+        dialog._remove_pending_leg(0)
+
+        assert len(dialog._pending_legs) == 1
+        assert dialog._legs_table.rowCount() == 1
+
+
+class TestAddingTheStagedLegs:
+    def test_add_legs_commits_every_staged_leg(self, qapp: QApplication) -> None:
+        dialog, vm = _make_dialog((_strike_row("24500", call_ltp="135.5", put_ltp="88.25"),))
+        dialog._on_side_selected(0, "CE", "Buy")
         dialog._on_side_selected(0, "PE", "Sell")
 
         dialog._on_add()
 
-        assert vm.added_legs[0].kind == LegKind.PUT_SELL
+        assert len(vm.added_legs) == 2
+        assert vm.added_legs[0].strike == Decimal("24500")
+        assert vm.added_legs[0].premium == Decimal("135.5")
+        assert vm.added_legs[0].multiplier == 75
+        assert vm.added_legs[0].underlying == "NIFTY"
+        assert vm.added_legs[0].expiry == _EXPIRY
 
-    def test_ok_without_a_selection_shows_an_error_and_does_not_add(self, qapp: QApplication) -> None:
+    def test_add_legs_without_any_staged_shows_an_error_and_does_not_add(self, qapp: QApplication) -> None:
         dialog, vm = _make_dialog((_strike_row("24500"),))
 
         dialog._on_add()

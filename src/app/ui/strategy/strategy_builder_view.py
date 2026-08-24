@@ -1,10 +1,10 @@
 """Strategy builder view."""
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
+from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QLineEdit,
                                  QPushButton, QSplitter, QVBoxLayout, QWidget)
 
-from app.ui.charts import greeks_chart, payoff_chart
+from app.ui.charts import payoff_chart
 from app.ui.dialogs.add_leg_dialog import AddLegDialog
 from app.ui.dialogs.open_dialog import OpenDialog
 from app.ui.strategy.leg_table_model import StrategyLegTableModel
@@ -73,12 +73,20 @@ class StrategyBuilderView(QWidget):
         results_pane = QWidget()
         results_layout = QVBoxLayout(results_pane)
         results_layout.setContentsMargins(0, 0, 0, 0)
-        charts = QGridLayout()
         self._payoff_chart = payoff_chart()
-        self._greeks_chart = greeks_chart()
-        charts.addWidget(self._payoff_chart, 0, 0)
-        charts.addWidget(self._greeks_chart, 0, 1)
-        results_layout.addLayout(charts)
+        results_layout.addWidget(self._payoff_chart)
+        payoff_controls = QHBoxLayout()
+        self._projected_loss_badge = QLabel("Projected loss: —")
+        self._projected_loss_badge.setStyleSheet(
+            "padding: 4px 10px; border-radius: 4px; font-weight: bold;"
+            "background-color: #21262d; color: #8b949e;"
+        )
+        payoff_controls.addWidget(self._projected_loss_badge)
+        payoff_controls.addStretch(1)
+        reset_zoom_btn = QPushButton("Reset Zoom")
+        reset_zoom_btn.clicked.connect(lambda: self._payoff_chart.chart().zoomReset())
+        payoff_controls.addWidget(reset_zoom_btn)
+        results_layout.addLayout(payoff_controls)
         prob = QLabel("Probability summary — from engine results")
         results_layout.addWidget(prob)
         self._optimization_summary = QLabel("Optimization: not run yet")
@@ -105,22 +113,42 @@ class StrategyBuilderView(QWidget):
     def _on_load_clicked(self) -> None:
         """Show a picker of saved strategies and load the selected one's
         legs into the builder via TradingViewModel.load_strategy()."""
-        dialog = OpenDialog(self._vm.list_strategies(), self)
+        dialog = OpenDialog(self._vm.list_strategies(), self, on_delete=self._vm.delete_strategy)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._vm.load_strategy(dialog.selected_id())
 
     def _on_evaluation(self, snapshot) -> None:
         """Render the latest evaluate_command result (a LiveAnalyticsSnapshot)
-        into the payoff/Greeks charts, clearing either that the snapshot
-        doesn't carry (e.g. an empty-legs strategy has no payoff)."""
+        into the payoff chart, clearing it if the snapshot has no payoff
+        (e.g. an empty-legs strategy)."""
         if snapshot.payoff is not None:
-            self._payoff_chart.set_curve(snapshot.payoff.payoff_curve)
+            self._payoff_chart.set_result(snapshot.payoff, snapshot.volatility, snapshot.spot_price)
+            self._update_projected_loss_badge(snapshot.payoff.current_pnl)
         else:
             self._payoff_chart.clear()
-        if snapshot.greeks is not None:
-            self._greeks_chart.set_greeks(snapshot.greeks)
+            self._update_projected_loss_badge(None)
+
+    def _update_projected_loss_badge(self, current_pnl) -> None:
+        """Static badge (independent of chart hover) showing today's real
+        P&L at the actual current spot -- red when in loss, green otherwise."""
+        if current_pnl is None:
+            self._projected_loss_badge.setText("Projected loss: —")
+            self._projected_loss_badge.setStyleSheet(
+                "padding: 4px 10px; border-radius: 4px; font-weight: bold;"
+                "background-color: #21262d; color: #8b949e;"
+            )
+            return
+        if current_pnl < 0:
+            label = f"Projected loss: {current_pnl:,.0f}"
+            color = "#f85149"
         else:
-            self._greeks_chart.clear()
+            label = f"Projected profit: +{current_pnl:,.0f}"
+            color = "#3fb950"
+        self._projected_loss_badge.setText(label)
+        self._projected_loss_badge.setStyleSheet(
+            f"padding: 4px 10px; border-radius: 4px; font-weight: bold;"
+            f"background-color: #21262d; color: {color};"
+        )
 
     def _on_optimization(self, result) -> None:
         """Render the latest optimize_command result (an OptimizationResult)

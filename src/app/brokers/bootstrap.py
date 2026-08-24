@@ -1,5 +1,7 @@
 """Broker integration bootstrap."""
 
+from pathlib import Path
+
 from app.brokers.broker_factory.factory import BrokerFactory
 from app.brokers.broker_manager.manager import BrokerManager
 from app.brokers.breeze.configuration_provider import BreezeConfigurationProvider
@@ -22,6 +24,7 @@ class BrokerProvider:
         health_callback: object | None = None,
         client_factory: object | None = None,
         session_store: BreezeSessionStore | None = None,
+        data_directory: Path | None = None,
     ) -> None:
         """Initialize broker provider."""
         callback = health_callback if callable(health_callback) else None
@@ -34,6 +37,7 @@ class BrokerProvider:
             event_bus,
             client_factory=factory,
             session_store=session_store,
+            data_directory=data_directory,
         )
         self.manager = BrokerManager(
             self.factory,

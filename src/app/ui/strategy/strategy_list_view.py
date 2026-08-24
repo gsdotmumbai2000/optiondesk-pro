@@ -1,6 +1,13 @@
 """Strategy list workspace view."""
 
-from PySide6.QtWidgets import QAbstractItemView, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QHBoxLayout,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.logging.logging_manager import get_logger
 from app.ui.strategy.strategy_list_model import StrategyListTableModel
@@ -22,6 +29,9 @@ class StrategyListView(QWidget):
         open_btn = QPushButton("Open")
         open_btn.clicked.connect(self._open_selected_row)
         actions.addWidget(open_btn)
+        delete_btn = QPushButton("Delete")
+        delete_btn.clicked.connect(self._delete_selected_row)
+        actions.addWidget(delete_btn)
         for label, cmd in (
             ("Save", viewmodel.save_command),
             ("Refresh", viewmodel.refresh_command),
@@ -55,3 +65,24 @@ class StrategyListView(QWidget):
             self._vm.open_command.execute()
             return
         self._vm.open_strategy(strategy_id)
+
+    def _delete_selected_row(self) -> None:
+        """Delete the selected strategy after confirmation, or fall back to
+        a "nothing selected" status message when no row is selected."""
+        rows = self._table.selectionModel().selectedRows()
+        if not rows:
+            self._vm.status_message = "Select strategy to delete"
+            return
+        row = rows[0].row()
+        strategy_id = self._model.strategy_id_for_row(row)
+        strategy_name = self._model.data(self._model.index(row, 0)) or strategy_id
+        confirm = QMessageBox.question(
+            self,
+            "Delete Strategy",
+            f'Delete strategy "{strategy_name}"? This cannot be undone.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        self._vm.delete_strategy(strategy_id)

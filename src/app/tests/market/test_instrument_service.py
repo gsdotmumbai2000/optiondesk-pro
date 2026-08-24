@@ -34,7 +34,7 @@ def test_find_by_instrument_type(market_provider: MarketMasterProvider) -> None:
 def test_lot_size_and_tick_size(market_provider: MarketMasterProvider) -> None:
     """Utility accessors should return specification values."""
     service = market_provider.instrument_service
-    assert service.get_lot_size("NIFTY") == 25
+    assert service.get_lot_size("NIFTY") == 65
     assert service.get_tick_size("BANKNIFTY") == Decimal("0.05")
     assert service.get_strike_interval("NIFTY") == Decimal("50")
     assert service.get_freeze_quantity("NIFTY") == 1800

@@ -341,7 +341,7 @@ class _FakeLiveContextBuilder:
     def build_contract(self, key, context):
         return SimpleNamespace(strike=context.atm_strike, option_type=None, expiry=context.expiry)
 
-    def build_option_chain(self, key):
+    def build_option_chain(self, key, context):
         return SimpleNamespace()
 
     def build_market_snapshot(self, key, context):

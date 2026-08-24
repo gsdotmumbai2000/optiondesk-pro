@@ -12,6 +12,7 @@ class BrokerCode(str, Enum):
     ANGEL_ONE = "ANGEL_ONE"
     UPSTOX = "UPSTOX"
     FYERS = "FYERS"
+    SIMULATOR = "SIMULATOR"
 
 
 class ConnectionState(str, Enum):

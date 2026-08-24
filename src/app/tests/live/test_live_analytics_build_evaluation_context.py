@@ -43,7 +43,7 @@ class _FakeContextBuilder:
     def build_contract(self, key, context):
         return self.contract
 
-    def build_option_chain(self, key):
+    def build_option_chain(self, key, context):
         if self._chain_error is not None:
             raise self._chain_error
         return self.chain

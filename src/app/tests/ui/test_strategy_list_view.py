@@ -8,7 +8,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.strategy.models.enums import LegKind, StrategyType
 from app.strategy.models.leg import StrategyLeg
@@ -100,3 +100,50 @@ class TestStrategyListViewOpenButton:
         view._open_selected_row()
 
         assert opened == ["strat-2"]
+
+
+class TestStrategyListViewDeleteButton:
+    def _make_view(self) -> tuple[StrategyListView, list[str]]:
+        provider = SimpleNamespace()
+        events = SimpleNamespace(strategy_updated=SimpleNamespace(connect=lambda *a, **k: None))
+        ctx = ViewModelContext(provider=provider, worker=SimpleNamespace(), events=events, session_id="s1")
+        vm = StrategyViewModel(ctx)
+        deleted: list[str] = []
+        vm.delete_strategy = deleted.append  # type: ignore[method-assign]
+        view = StrategyListView(vm)
+        view._model.set_strategies([_strategy("strat-1", "A"), _strategy("strat-2", "B")])
+        return view, deleted
+
+    def test_no_selection_falls_back_to_placeholder_status(self, qapp: QApplication) -> None:
+        view, deleted = self._make_view()
+
+        view._delete_selected_row()
+
+        assert deleted == []
+        assert view._vm.status_message == "Select strategy to delete"
+
+    def test_confirmed_selection_deletes_its_strategy_id(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        view, deleted = self._make_view()
+        view._table.selectRow(1)
+        monkeypatch.setattr(
+            QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes,
+        )
+
+        view._delete_selected_row()
+
+        assert deleted == ["strat-2"]
+
+    def test_declined_confirmation_does_not_delete(
+        self, qapp: QApplication, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        view, deleted = self._make_view()
+        view._table.selectRow(1)
+        monkeypatch.setattr(
+            QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No,
+        )
+
+        view._delete_selected_row()
+
+        assert deleted == []
