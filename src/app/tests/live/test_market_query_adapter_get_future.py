@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 from app.live.cache.option_cache import LiveOptionCache
 from app.live.calculations.market_query_adapter import LiveMarketQueryAdapter
 from app.market_data.cache.live_tick_cache import LiveTickCache
+from app.market_data.models.future import FutureQuote
 from app.market_data.models.tick import TickSnapshot
 from app.market_data.services.market_cache_service import MarketCacheService
 from app.market_data.services.market_data_service import MarketDataService
@@ -13,8 +14,27 @@ from app.market_data.symbols import InstrumentMasterSymbolCanonicalizer
 from app.market_data.websocket.websocket_service import WebSocketService
 
 
-def _adapter_with_cache(cache: MarketCacheService) -> LiveMarketQueryAdapter:
-    provider = SimpleNamespace(cache=cache)
+class _FakeQueryEngine:
+    """Stands in for engine.query's REST fallback (see
+    MarketDataService.get_future()) -- returns whatever future quote the
+    test configures, "no data" (ltp=None) by default, so a tick-cache miss
+    with no broker data either still resolves to ltp=None rather than
+    raising."""
+
+    def __init__(self, future_quote: FutureQuote | None = None) -> None:
+        self._future_quote = future_quote
+
+    def get_future(self, symbol: str, exchange: str, expiry_date: str) -> FutureQuote:
+        return self._future_quote or FutureQuote(
+            symbol=symbol, exchange=exchange, underlying=symbol, expiry_date=expiry_date,
+        )
+
+
+def _adapter_with_cache(
+    cache: MarketCacheService, *, rest_future_quote: FutureQuote | None = None
+) -> LiveMarketQueryAdapter:
+    engine = SimpleNamespace(query=_FakeQueryEngine(rest_future_quote))
+    provider = SimpleNamespace(cache=cache, engine=engine)
     market_data = MarketDataService(provider)
     return LiveMarketQueryAdapter(market_data, LiveOptionCache())
 
@@ -25,6 +45,22 @@ def test_get_future_does_not_raise_on_cache_miss() -> None:
     result = adapter.get_future("NIFTY", "NFO", "18-Aug-2026")
 
     assert result.ltp is None
+
+
+def test_get_future_falls_back_to_broker_rest_on_cache_miss() -> None:
+    """No tick has streamed in yet, but the broker REST fetch has real
+    data -- Evaluate/Optimize must use it rather than reporting
+    unavailable, matching MarketDataService.get_option_chain()'s existing
+    REST fallback."""
+    rest_quote = FutureQuote(
+        symbol="NIFTY", exchange="NFO", underlying="NIFTY", expiry_date="18-Aug-2026",
+        ltp=25200,
+    )
+    adapter = _adapter_with_cache(MarketCacheService(), rest_future_quote=rest_quote)
+
+    result = adapter.get_future("NIFTY", "NFO", "18-Aug-2026")
+
+    assert result.ltp == 25200
 
 
 def test_get_future_returns_cached_future_tick() -> None:

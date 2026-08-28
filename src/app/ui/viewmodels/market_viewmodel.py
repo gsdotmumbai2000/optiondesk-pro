@@ -1,5 +1,6 @@
 """Market workspace ViewModel."""
 
+import time
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from PySide6.QtCore import Property, Signal
@@ -16,6 +17,18 @@ from app.ui.viewmodels.context import ViewModelContext
 
 logger = get_logger(__name__)
 
+DEFAULT_CHAIN_WIDTH = 10
+
+# _on_market_updated fires on every tick/quote across every subscribed
+# instrument (~46 with the default chain width) -- confirmed by production
+# log analysis to run 200-284 times/sec on the Qt GUI thread during a tick
+# backlog drain, which is what made the app appear frozen. Throttled the
+# same way live_analytics_service.py throttles publish_chain(), and for the
+# same reason: this is a status re-check, not something that needs to run
+# on every single tick. Live spot-price display is unaffected -- _on_tick
+# still applies spot ticks immediately via _apply_tick(), unthrottled.
+_STATUS_REFRESH_INTERVAL_SECONDS = 0.5
+
 class MarketViewModel(BaseViewModel):
     """ViewModel for market workspace."""
 
@@ -24,6 +37,8 @@ class MarketViewModel(BaseViewModel):
     market_status_changed = Signal(dict)
     option_chain_changed = Signal(list)
     option_chain_snapshot_changed = Signal(object)
+    expiries_changed = Signal(list)
+    expiry_selected = Signal(str)
 
     def __init__(self, ctx: ViewModelContext, parent=None) -> None:
         super().__init__(parent)
@@ -39,6 +54,10 @@ class MarketViewModel(BaseViewModel):
         self._option_chain_expiry = ""
         self._broker_ready = False
         self._option_chain_auto_requested = False
+        self._chain_width = DEFAULT_CHAIN_WIDTH
+        self._available_expiries: list[tuple[str, str]] = []
+        self._selected_expiry = ""
+        self._last_status_refresh = 0.0
         self.refresh_command = RelayCommand(self.refresh, parent=self)
         self._ctx.events.market_updated.connect(self._on_market_updated)
         self._ctx.events.tick_received.connect(self._on_tick)
@@ -70,6 +89,10 @@ class MarketViewModel(BaseViewModel):
     def connection_status(self) -> str:
         return self._connection_status
 
+    @Property(list, notify=expiries_changed)
+    def available_expiries(self) -> list[tuple[str, str]]:
+        return self._available_expiries
+
     def refresh(self) -> None:
         self.busy = True
 
@@ -87,13 +110,23 @@ class MarketViewModel(BaseViewModel):
 
         self._ctx.worker.run(work, done, err)
 
-    def load_option_chain(self, underlying: str = "NIFTY", *, exchange: str = "NFO") -> None:
-        """Load the initial ATM-centered option chain snapshot asynchronously.
+    def load_option_chain(
+        self,
+        underlying: str = "NIFTY",
+        *,
+        exchange: str = "NFO",
+        expiry_date: str = "",
+    ) -> None:
+        """Load an ATM-centered option chain snapshot asynchronously.
 
         Performs a broker REST call and subscribes the live strike window,
         so it always runs on the BackgroundWorker thread pool rather than
         blocking the Qt UI thread. Requires an already-connected broker
         session; call after broker_connected/authentication_succeeded.
+
+        `expiry_date` (DD-Mon-YYYY) pins the fetch to a specific expiry --
+        typically the one picked from the expiry dropdown -- instead of the
+        nearest weekly expiry.
         """
         logger.info("Option chain load requested")
         if not self._broker_ready:
@@ -104,7 +137,11 @@ class MarketViewModel(BaseViewModel):
         def work():
             logger.info("Option chain load started")
             return self._ctx.provider.market.initial_option_chain(
-                self._ctx.session_id, underlying, exchange=exchange
+                self._ctx.session_id,
+                underlying,
+                exchange=exchange,
+                window_radius=self._chain_width,
+                expiry_date=expiry_date,
             )
 
         def done(result):
@@ -118,6 +155,8 @@ class MarketViewModel(BaseViewModel):
             self._option_chain_underlying = str(data.get("underlying", underlying))
             self._option_chain_exchange = str(data.get("exchange", exchange))
             self._option_chain_expiry = str(data.get("expiry_date", ""))
+            self._selected_expiry = self._option_chain_expiry
+            self.expiry_selected.emit(self._option_chain_expiry)
             rows = self._rows_from_rest_strikes(data.get("strikes", []))
             self.option_chain_changed.emit(rows)
             logger.debug("UI result emitted: option_chain_changed")
@@ -136,6 +175,49 @@ class MarketViewModel(BaseViewModel):
             self.set_error(msg)
 
         self._ctx.worker.run(work, done, err)
+
+    def set_chain_width(self, radius: int) -> None:
+        """Change the ATM +/- strike window and reload the chain to match.
+
+        No-op if the broker isn't connected yet -- the new width takes
+        effect on the next load_option_chain() call (auto-triggered by
+        _on_broker_ready) instead of firing a request that would fail.
+        """
+        if radius == self._chain_width:
+            return
+        self._chain_width = radius
+        if not self._broker_ready:
+            return
+        underlying = self._option_chain_underlying or self._spot_symbol
+        exchange = self._option_chain_exchange or "NFO"
+        self.load_option_chain(underlying, exchange=exchange, expiry_date=self._selected_expiry)
+
+    def load_expiries(self, underlying: str = "NIFTY", *, exchange: str = "NFO") -> None:
+        """Populate the expiry dropdown for `underlying` -- pure Expiry
+        Master lookup (weekly+monthly rules, holiday-adjusted), no broker
+        call, safe to call directly off the Qt UI thread."""
+        result = self._ctx.provider.market.list_expiries(
+            self._ctx.session_id, underlying, exchange=exchange
+        )
+        if not result or not result.success:
+            self.status_message = result.message if result else "No expiries available"
+            return
+        self._available_expiries = [(item["label"], item["expiry_date"]) for item in result.data]
+        if not self._selected_expiry and self._available_expiries:
+            self._selected_expiry = self._available_expiries[0][1]
+        self.expiries_changed.emit(self._available_expiries)
+
+    def set_expiry(self, expiry_date: str) -> None:
+        """Switch the option chain to a different expiry, reloading it via
+        the same broker REST path load_option_chain() already uses."""
+        if not expiry_date or expiry_date == self._selected_expiry:
+            return
+        self._selected_expiry = expiry_date
+        if not self._broker_ready:
+            return
+        underlying = self._option_chain_underlying or self._spot_symbol
+        exchange = self._option_chain_exchange or "NFO"
+        self.load_option_chain(underlying, exchange=exchange, expiry_date=expiry_date)
 
     def set_watchlist(self, symbols: list[str]) -> None:
         result = self._ctx.provider.market.watchlist(self._ctx.session_id, tuple(symbols))
@@ -177,6 +259,10 @@ class MarketViewModel(BaseViewModel):
 
     def _on_market_updated(self, payload: dict) -> None:
         self.status_message = "Market data updated"
+        now = time.monotonic()
+        if now - self._last_status_refresh < _STATUS_REFRESH_INTERVAL_SECONDS:
+            return
+        self._last_status_refresh = now
         self._load_status()
 
     def _on_broker_ready(self, payload: dict) -> None:
@@ -186,7 +272,8 @@ class MarketViewModel(BaseViewModel):
         if self._option_chain_auto_requested:
             return
         self._option_chain_auto_requested = True
-        self.load_option_chain()
+        self.load_expiries()
+        self.load_option_chain(expiry_date=self._selected_expiry)
 
     def _on_broker_disconnected(self, payload: dict) -> None:
         self._broker_ready = False
@@ -196,9 +283,15 @@ class MarketViewModel(BaseViewModel):
     def _on_tick(self, payload: dict) -> None:
         tick = payload.get("tick", payload)
         log_tick_diagnostic(logger, "VIEWMODEL", "tick received", tick)
-        if tick.get("symbol") == self._spot_symbol:
-            self._apply_tick(tick)
-        self.tick_updated.emit(tick)
+        # NIFTY futures ticks are canonicalized to the same bare "NIFTY" symbol
+        # as the cash-index spot tick (see websocket_service._canonicalize_future_tick),
+        # so the exchange must also be checked here or a futures LTP (NFO) gets
+        # applied as the spot price, making the spot LTP appear to spike/flicker
+        # against the futures premium/discount.
+        if tick.get("symbol") == self._spot_symbol and tick.get("exchange") == "NSE":
+            self._apply_tick(tick)  # emits tick_updated itself -- don't double-emit below
+        else:
+            self.tick_updated.emit(tick)
 
     def _on_market_status(self, payload: dict) -> None:
         self._load_status()

@@ -107,7 +107,7 @@ class MainWindow(QMainWindow):
         self._tabs = QTabWidget()
         self._tabs.setDocumentMode(True)
         self._workspace_map = {
-            UIWorkspaceId.TRADING: trading_workspace(self._trading_vm, self._monitor_vm),
+            UIWorkspaceId.TRADING: trading_workspace(self._trading_vm),
             UIWorkspaceId.MARKET: market_workspace(self._market_vm),
             UIWorkspaceId.STRATEGY: strategy_workspace(self._strategy_vm),
             UIWorkspaceId.PORTFOLIO: portfolio_workspace(self._portfolio_vm),

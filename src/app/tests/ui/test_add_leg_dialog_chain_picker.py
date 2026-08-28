@@ -58,6 +58,7 @@ class _FakeTradingViewModel:
         self._show_greeks = show_greeks
         self.status_message = ""
         self.added_legs: list = []
+        self.load_expiry_chain_calls: list = []
 
     def list_underlyings(self) -> list[str]:
         return ["NIFTY"]
@@ -67,6 +68,12 @@ class _FakeTradingViewModel:
 
     def leg_chain_strikes(self, underlying: str, expiry: date) -> tuple:
         return self._chain_rows
+
+    def load_expiry_chain(self, underlying: str, expiry: date, exchange: str = "NFO", *, on_done=None) -> None:
+        """Fake: resolves synchronously (no real worker/broker in this test)."""
+        self.load_expiry_chain_calls.append((underlying, expiry))
+        if on_done:
+            on_done()
 
     def show_greeks_in_leg_picker(self) -> bool:
         return self._show_greeks
@@ -108,6 +115,46 @@ class TestChainPopulation:
 
         assert not dialog._error.isHidden()
         assert "Live chain unavailable" in dialog._error.text()
+
+    def test_empty_cache_triggers_a_broker_fetch_for_the_selected_expiry(self, qapp: QApplication) -> None:
+        """An expiry Market workspace hasn't loaded yet must not just show
+        an error -- it must fetch it fresh via the broker, same as picking
+        a different expiry in the Market tab does."""
+        vm = _FakeTradingViewModel(())
+
+        dialog = AddLegDialog(vm)
+
+        # _refresh_chain() can run more than once during construction (the
+        # combo's currentIndexChanged fires on the first addItem(), and
+        # _refresh_expiries() also calls it explicitly) -- what matters is
+        # that a fetch for the right underlying/expiry happened at all.
+        assert ("NIFTY", _EXPIRY) in vm.load_expiry_chain_calls
+
+    def test_chain_populates_once_the_fetch_lands(self, qapp: QApplication) -> None:
+        """Once load_expiry_chain()'s on_done fires and leg_chain_strikes()
+        now has rows (simulating the broker fetch having populated the
+        session cache), the table must repaint with them."""
+        vm = _FakeTradingViewModel(())
+        dialog = AddLegDialog(vm)
+        assert dialog._chain_table.rowCount() == 0
+
+        vm._chain_rows = (_strike_row("24500"),)
+        dialog._on_chain_fetch_done("NIFTY", _EXPIRY)
+
+        assert dialog._chain_table.rowCount() == 1
+
+    def test_stale_fetch_response_is_ignored_after_expiry_changed(self, qapp: QApplication) -> None:
+        """A slow fetch for an old expiry selection landing after the user
+        already picked a different one must not clobber the newer table."""
+        vm = _FakeTradingViewModel(())
+        dialog = AddLegDialog(vm)
+        dialog._expiry.addItem("Monthly 25-Aug-2026", date(2026, 8, 25))
+        dialog._expiry.setCurrentIndex(dialog._expiry.count() - 1)
+        vm._chain_rows = (_strike_row("24500"),)
+
+        dialog._on_chain_fetch_done("NIFTY", _EXPIRY)  # stale: the old expiry
+
+        assert dialog._chain_table.rowCount() == 0
 
     def test_call_and_put_bs_widgets_are_placed_when_ltp_available(self, qapp: QApplication) -> None:
         dialog, _vm = _make_dialog((_strike_row("24500"),))

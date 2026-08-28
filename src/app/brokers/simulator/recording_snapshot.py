@@ -69,24 +69,35 @@ class RecordingSnapshot:
         )
 
     def option_chain(self, request: OptionChainRequest) -> OptionChain:
-        """Rebuild an option chain (one merged leg per strike) from recorded ticks."""
+        """Rebuild an option chain (one merged leg per strike) from recorded
+        ticks. Prefers strikes recorded at the requested expiry; if this
+        recording session never captured that expiry -- e.g. the user
+        picked a different one from the expiry dropdown than whatever was
+        live when this recording was made -- falls back to whatever
+        expiry it does have rather than returning an empty chain.
+        Simulator mode trades exact accuracy for having *something* to
+        test a strategy against offline, at any expiry."""
         self._ensure_loaded()
         spot_tick = self._by_symbol.get(request.underlying)
         spot_price = to_decimal(spot_tick.get("ltp")) if spot_tick else None
 
+        option_ticks = [
+            tick for tick in self._by_symbol.values() if tick.get("product_type") == "Options"
+        ]
+        if request.expiry_date:
+            exact = [
+                tick for tick in option_ticks if tick.get("expiry_date", "") == request.expiry_date
+            ]
+            option_ticks = exact if exact else option_ticks
+
         legs_by_strike: dict[Decimal, OptionChainLeg] = {}
-        for tick in self._by_symbol.values():
-            if tick.get("product_type") != "Options":
-                continue
-            expiry = tick.get("expiry_date", "")
-            if request.expiry_date and expiry != request.expiry_date:
-                continue
+        for tick in option_ticks:
             strike = to_decimal(tick.get("strike_price"))
             if strike is None:
                 continue
             leg = legs_by_strike.get(strike)
             if leg is None:
-                leg = OptionChainLeg(strike_price=strike, expiry_date=expiry)
+                leg = OptionChainLeg(strike_price=strike, expiry_date=tick.get("expiry_date", ""))
                 legs_by_strike[strike] = leg
             right = str(tick.get("option_right", "")).strip().lower()
             if right == "call":

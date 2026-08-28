@@ -133,6 +133,10 @@ class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMar
         """Return expiry choices and lot size for a leg being added to a new
         strategy -- pure Instrument/Expiry Master lookups, no broker call.
 
+        Lists every upcoming weekly+monthly expiry (not just the nearest of
+        each), matching the Market tab's expiry dropdown -- so a leg can be
+        built against any live expiry, not only this week's/this month's.
+
         WorkspaceOperationResult.success is False (no data) when the
         underlying isn't in the Instrument Master or has no resolvable
         expiry."""
@@ -143,18 +147,17 @@ class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMar
             return WorkspaceOperationResult(
                 False, WorkspaceType.TRADING, f"Unknown underlying: {underlying}",
             )
-        today = date.today()
-        weekly = instrument_service.weekly_expiry(underlying, exchange, on_date=today)
-        monthly = instrument_service.monthly_expiry(underlying, exchange, on_date=today)
-        expiries: list[tuple[str, date]] = []
-        if weekly is not None:
-            expiries.append((f"Weekly {weekly.expiry_date.isoformat()}", weekly.expiry_date))
-        if monthly is not None and (weekly is None or monthly.expiry_date != weekly.expiry_date):
-            expiries.append((f"Monthly {monthly.expiry_date.isoformat()}", monthly.expiry_date))
-        if not expiries:
+        records = instrument_service.list_upcoming_expiries(
+            underlying, exchange, on_date=date.today()
+        )
+        if not records:
             return WorkspaceOperationResult(
                 False, WorkspaceType.TRADING, f"No expiry available for {underlying}",
             )
+        expiries = [
+            (f"{record.expiry_date.isoformat()} ({record.expiry_type.value.title()})", record.expiry_date)
+            for record in records
+        ]
         return WorkspaceOperationResult(
             True, WorkspaceType.TRADING, "Expiry options resolved",
             {"expiries": expiries, "lot_size": lot_size},
@@ -327,10 +330,19 @@ class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMar
         )
         if snapshot is None:
             return WorkspaceOperationResult(
-                False, WorkspaceType.TRADING,
-                "Live chain unavailable — subscribe to this underlying/expiry in Market workspace first",
+                False, WorkspaceType.TRADING, self._unavailable_message(),
             )
         return WorkspaceOperationResult(True, WorkspaceType.TRADING, "Strategy evaluated", snapshot)
+
+    def _unavailable_message(self) -> str:
+        """Build the failure message for a None live-analytics result,
+        including the real underlying cause (e.g. "Spot quote unavailable:
+        NIFTY") when the configured LiveAnalyticsPort reports one, instead
+        of always showing the same generic text regardless of what
+        actually failed deep in the calculation pipeline."""
+        base = "Live chain unavailable — subscribe to this underlying/expiry in Market workspace first"
+        reason = self.live_analytics_last_error()
+        return f"{base} ({reason})" if reason else base
 
     def optimize_strategy(
         self,
@@ -396,8 +408,7 @@ class TradingWorkspaceService(MarketDataSupport, LiveAnalyticsSupport, BrokerMar
         context = self.evaluation_context(underlying, leg_exchange, expiry_date)
         if context is None:
             return WorkspaceOperationResult(
-                False, WorkspaceType.TRADING,
-                "Live chain unavailable — subscribe to this underlying/expiry in Market workspace first",
+                False, WorkspaceType.TRADING, self._unavailable_message(),
             )
         snapshot = self.refresh_live_analytics(underlying, leg_exchange, expiry_date)
         if snapshot is None or snapshot.risk is None or snapshot.margin is None:

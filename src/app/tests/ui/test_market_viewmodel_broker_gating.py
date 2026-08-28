@@ -58,10 +58,24 @@ class _FakeMarketService:
     def latest_quote(self, session_id: str, symbol: str, exchange: str) -> WorkspaceOperationResult:
         return WorkspaceOperationResult(False, WorkspaceType.MARKET, "no tick", {})
 
-    def initial_option_chain(
+    def list_expiries(
         self, session_id: str, underlying: str = "NIFTY", *, exchange: str = "NFO"
     ) -> WorkspaceOperationResult:
-        self.initial_option_chain_calls.append((session_id, underlying, exchange))
+        return WorkspaceOperationResult(
+            True, WorkspaceType.MARKET, "1 expiry",
+            [{"label": "28-Aug-2026 (Weekly)", "expiry_date": "28-Aug-2026"}],
+        )
+
+    def initial_option_chain(
+        self,
+        session_id: str,
+        underlying: str = "NIFTY",
+        *,
+        exchange: str = "NFO",
+        window_radius: int = 10,
+        expiry_date: str = "",
+    ) -> WorkspaceOperationResult:
+        self.initial_option_chain_calls.append((session_id, underlying, exchange, window_radius))
         return WorkspaceOperationResult(
             True,
             WorkspaceType.MARKET,
@@ -128,7 +142,7 @@ class TestBrokerConnectedTriggersSingleLoad:
         assert len(worker.calls) == 1
         worker.execute()
         assert len(market.initial_option_chain_calls) == 1
-        assert market.initial_option_chain_calls[0] == ("s1", "NIFTY", "NFO")
+        assert market.initial_option_chain_calls[0] == ("s1", "NIFTY", "NFO", 10)
 
     def test_repeated_broker_connected_does_not_duplicate_load(self, qapp: QApplication) -> None:
         vm, worker, market, events = _make_viewmodel(qapp)
@@ -185,7 +199,7 @@ class TestExplicitLoadOptionChainStillWorks:
 
         assert len(worker.calls) == 2
         worker.execute()
-        assert market.initial_option_chain_calls[-1] == ("s1", "BANKNIFTY", "NFO")
+        assert market.initial_option_chain_calls[-1] == ("s1", "BANKNIFTY", "NFO", 10)
 
     def test_explicit_call_before_any_connection_is_skipped(self, qapp: QApplication) -> None:
         vm, worker, market, events = _make_viewmodel(qapp)
@@ -194,3 +208,57 @@ class TestExplicitLoadOptionChainStillWorks:
 
         assert worker.calls == []
         assert market.initial_option_chain_calls == []
+
+
+class TestChainWidthToggle:
+    """set_chain_width() controls the window_radius passed to initial_option_chain()."""
+
+    def test_default_width_is_ten(self, qapp: QApplication) -> None:
+        vm, worker, market, events = _make_viewmodel(qapp)
+        events.broker_connected.emit({"broker": "breeze"})
+        worker.execute()
+
+        assert market.initial_option_chain_calls[0] == ("s1", "NIFTY", "NFO", 10)
+
+    def test_changing_width_before_connection_is_stored_but_does_not_dispatch(
+        self, qapp: QApplication
+    ) -> None:
+        vm, worker, market, events = _make_viewmodel(qapp)
+
+        vm.set_chain_width(20)
+
+        assert worker.calls == []
+        assert market.initial_option_chain_calls == []
+
+    def test_changing_width_after_connection_reloads_with_new_radius(
+        self, qapp: QApplication
+    ) -> None:
+        vm, worker, market, events = _make_viewmodel(qapp)
+        events.broker_connected.emit({"broker": "breeze"})
+        worker.execute()
+
+        vm.set_chain_width(20)
+
+        assert len(worker.calls) == 2
+        worker.execute()
+        assert market.initial_option_chain_calls[-1] == ("s1", "NIFTY", "NFO", 20)
+
+    def test_setting_same_width_is_a_noop(self, qapp: QApplication) -> None:
+        vm, worker, market, events = _make_viewmodel(qapp)
+        events.broker_connected.emit({"broker": "breeze"})
+        worker.execute()
+
+        vm.set_chain_width(10)
+
+        assert len(worker.calls) == 1
+
+    def test_deferred_width_change_is_used_by_the_next_connection(
+        self, qapp: QApplication
+    ) -> None:
+        vm, worker, market, events = _make_viewmodel(qapp)
+
+        vm.set_chain_width(30)
+        events.broker_connected.emit({"broker": "breeze"})
+        worker.execute()
+
+        assert market.initial_option_chain_calls[0] == ("s1", "NIFTY", "NFO", 30)

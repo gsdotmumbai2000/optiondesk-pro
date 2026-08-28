@@ -30,6 +30,19 @@ class ExpiryService:
             expiry_type=expiry_type,
         )
 
+    def list_upcoming_expiries(
+        self,
+        underlying: str,
+        exchange: str,
+        *,
+        on_date: date,
+        weeks_ahead: int = 8,
+    ) -> list[ExpiryRecord]:
+        """Return sorted, deduplicated weekly+monthly expiries ahead of on_date."""
+        return self._cache.expiry_manager.list_upcoming_expiries(
+            underlying, exchange, on_date=on_date, weeks_ahead=weeks_ahead
+        )
+
     def next_expiry(
         self,
         underlying: str,

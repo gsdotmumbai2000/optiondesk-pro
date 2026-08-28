@@ -239,6 +239,42 @@ class TradingViewModel(BaseViewModel):
             return ()
         return tuple(result.data)
 
+    def load_expiry_chain(
+        self,
+        underlying: str,
+        expiry: date,
+        exchange: str = "NFO",
+        *,
+        on_done=None,
+    ) -> None:
+        """Fetch a fresh broker-REST option chain for underlying/expiry into
+        the same session cache leg_chain_strikes() reads from -- used by the
+        Add Leg dialog when the user picks an expiry Market workspace
+        hasn't loaded yet (leg_chain_strikes() alone never calls the
+        broker). Runs off the Qt UI thread via the same
+        MarketWorkspaceService.initial_option_chain() path the Market tab
+        uses; invokes on_done() (no args) once the fetch settles, success
+        or failure, so the dialog can refresh its table."""
+        expiry_str = expiry.strftime("%d-%b-%Y")
+
+        def work():
+            return self._ctx.provider.market.initial_option_chain(
+                self._ctx.session_id, underlying, exchange=exchange, expiry_date=expiry_str,
+            )
+
+        def done(result):
+            if not result or not result.success:
+                self.status_message = result.message if result else "Option chain unavailable"
+            if on_done:
+                on_done()
+
+        def err(msg: str):
+            self.set_error(msg)
+            if on_done:
+                on_done()
+
+        self._ctx.worker.run(work, done, err)
+
     def show_greeks_in_leg_picker(self) -> bool:
         """Whether the Add Leg dialog's strike picker should show Delta
         columns -- a user preference (Settings), off by default."""

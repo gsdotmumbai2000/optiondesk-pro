@@ -8,6 +8,7 @@ from app.brokers.shared.enums import BrokerCode
 from app.events.event_bus import EventBus
 from app.market_data.bootstrap import MarketDataProvider
 from app.services.broker.connection_status_service import ConnectionStatusService
+from app.services.broker.market_mode_service import MarketModeService
 from app.simulator.recorder.tick_recorder import TickRecorder
 from app.ui.application.qt_application import create_application
 from app.ui.application.worker_pool import BackgroundWorker
@@ -29,6 +30,7 @@ class DesktopApplication:
         market_data: MarketDataProvider | None = None,
         data_directory: Path | None = None,
         tick_recorder: TickRecorder | None = None,
+        market_mode_service: MarketModeService | None = None,
     ) -> None:
         """Initialize desktop application."""
         self._event_bus = event_bus
@@ -40,6 +42,7 @@ class DesktopApplication:
             market_data=market_data,
             data_directory=data_directory,
             tick_recorder=tick_recorder,
+            market_mode_service=market_mode_service,
         )
         self._theme = ThemeManager()
         self._worker = BackgroundWorker()

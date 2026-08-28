@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication
 
 from app.brokers.bootstrap import BrokerProvider
 from app.brokers.shared.enums import BrokerCode
+from app.brokers.shared.market_hours import resolve_effective_broker_code
 from app.config.configuration_manager import ConfigurationManager
 from app.core.service_registry import ServiceRegistry
 from app.events.application_events import (ApplicationShuttingDownEvent,
@@ -30,8 +31,8 @@ from app.security.credential_manager import CredentialManager
 from app.services.broker.bootstrap import (build_broker_bundle,
                                            build_connection_status_service)
 from app.services.broker.connection_status_service import ConnectionStatusService
+from app.services.broker.market_mode_service import MarketModeService
 from app.services.service_keys import ServiceKeys
-from app.simulator.player.replay_engine import ReplayEngine, find_latest_recording
 from app.simulator.recorder.tick_recorder import TickRecorder
 from app.ui.application.desktop_app import DesktopApplication
 from app.utils.runtime_paths import application_log_directory
@@ -71,8 +72,8 @@ class ApplicationKernel:
         self.broker_provider: BrokerProvider | None = None
         self._connection_status: ConnectionStatusService | None = None
         self.market_data_provider: MarketDataProvider | None = None
+        self.market_mode_service: MarketModeService | None = None
         self._tick_recorder: TickRecorder | None = None
-        self._replay_engine: ReplayEngine | None = None
 
     def initialize(self) -> None:
         """Initialize all application subsystems."""
@@ -111,6 +112,7 @@ class ApplicationKernel:
             market_data=self.market_data_provider,
             data_directory=data_dir,
             tick_recorder=self._tick_recorder,
+            market_mode_service=self.market_mode_service,
         )
         self._running = True
         self.event_bus.publish(
@@ -153,8 +155,8 @@ class ApplicationKernel:
             self.repository_factory.close()
         if self.market_master_provider is not None:
             self.market_master_provider.shutdown()
-        if self._replay_engine is not None:
-            self._replay_engine.stop()
+        if self.market_mode_service is not None:
+            self.market_mode_service.stop()
         if self.market_data_provider is not None:
             self.market_data_provider.stop()
         if self.health_monitor is not None:
@@ -302,35 +304,30 @@ class ApplicationKernel:
             instrument_service=self.market_master_provider.instrument_service,
         )
         self.market_data_provider.start()
-        self._bootstrap_simulator(data_dir)
+        self.market_mode_service = MarketModeService(
+            self.broker_provider,
+            self.market_data_provider,
+            self.configuration_manager.configuration.broker,
+            data_dir,
+            configuration_manager=self.configuration_manager,
+        )
+        # The simulator needs no real login, so DesktopApplication auto-
+        # connects it once the UI/viewmodels exist (see
+        # DesktopApplication._activate_simulator_broker) -- but the replay
+        # engine that feeds it ticks can start now regardless, since it only
+        # pushes into the dispatcher and doesn't touch broker connection.
+        self.market_mode_service.initialize()
+        self._bootstrap_tick_recorder(data_dir)
 
-    def _bootstrap_simulator(self, data_dir: Path) -> None:
-        """Start NIFTY tick recording or replay, depending on broker/config."""
+    def _bootstrap_tick_recorder(self, data_dir: Path) -> None:
+        """Start NIFTY tick recording when running live with RECORD_MARKET_DATA set."""
         assert self.broker_provider is not None
         assert self.event_bus is not None
-        assert self.market_data_provider is not None
         broker_code = self.broker_provider.broker.broker_code
-        recordings_dir = data_dir / "simulator" / "recordings"
-
         if broker_code == BrokerCode.SIMULATOR:
-            recording_path = find_latest_recording(recordings_dir)
-            if recording_path is None:
-                logger.warning(
-                    "Simulator broker selected but no recordings found in {dir}; "
-                    "run with RECORD_MARKET_DATA=1 against the real broker during "
-                    "market hours first",
-                    dir=recordings_dir,
-                )
-                return
-            # The simulator needs no real login, so DesktopApplication
-            # auto-connects it once the UI/viewmodels exist (see
-            # DesktopApplication._activate_simulator_broker) -- doing it here
-            # instead would publish BrokerConnectedEvent before anything has
-            # subscribed to it, silently skipping the option-chain auto-load
-            # that normally follows a broker connection.
-            self._replay_engine = ReplayEngine(self.market_data_provider.dispatcher, recording_path)
-            self._replay_engine.start()
-        elif os.environ.get("RECORD_MARKET_DATA", "").strip().lower() in {"1", "true", "yes"}:
+            return
+        if os.environ.get("RECORD_MARKET_DATA", "").strip().lower() in {"1", "true", "yes"}:
+            recordings_dir = data_dir / "simulator" / "recordings"
             self._tick_recorder = TickRecorder(self.event_bus, recordings_dir)
             self._tick_recorder.start()
 
@@ -344,10 +341,16 @@ class ApplicationKernel:
         data_dir = Path(
             self.configuration_manager.configuration.application.data_directory
         )
+        initial_code = resolve_effective_broker_code(config.market_mode, config.broker_code)
         self.broker_provider = build_broker_bundle(
             config,
             self.credential_manager,
             self.event_bus,
             data_dir,
+            initial_broker_code=initial_code,
         )
-        self._connection_status = build_connection_status_service(config, self.event_bus)
+        self._connection_status = build_connection_status_service(
+            config,
+            self.event_bus,
+            active_broker_code=lambda: self.broker_provider.manager.broker_code,
+        )

@@ -98,7 +98,7 @@ class StrategyBuilderView(QWidget):
         builder_splitter.addWidget(legs_pane)
         builder_splitter.addWidget(results_pane)
         builder_splitter.setStretchFactor(0, 1)
-        builder_splitter.setStretchFactor(1, 1)
+        builder_splitter.setStretchFactor(1, 3)
         style_splitter_handle(builder_splitter)
         root.addWidget(builder_splitter, 1)
 

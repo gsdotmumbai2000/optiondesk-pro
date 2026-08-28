@@ -169,21 +169,61 @@ class MarketWorkspaceService(LiveAnalyticsSupport):
             payload,
         )
 
-    def initial_option_chain(
+    def list_expiries(
         self,
         session_id: str,
         underlying: str = "NIFTY",
         *,
         exchange: str = "NFO",
     ) -> WorkspaceOperationResult:
-        """Fetch an initial REST option-chain snapshot for the ATM window.
+        """List upcoming expiries for the Market tab / Add Leg expiry
+        dropdown -- pure Expiry Master lookup (weekly+monthly rules,
+        holiday-adjusted), no broker call, safe to call directly off the
+        worker thread pool. Data: list of {"label": ..., "expiry_date": ...}
+        (expiry_date in DD-Mon-YYYY, ready to pass back into
+        initial_option_chain())."""
+        expiry_service = self._engines.market_master.expiry_service
+        records = expiry_service.list_upcoming_expiries(
+            underlying, ExchangeCode.NSEFO.value, on_date=date.today()
+        )
+        if not records:
+            return WorkspaceOperationResult(
+                False, WorkspaceType.MARKET, f"No expiry available for {underlying}"
+            )
+        items = [
+            {
+                "label": f"{record.expiry_date.strftime('%d-%b-%Y')} ({record.expiry_type.value.title()})",
+                "expiry_date": record.expiry_date.strftime("%d-%b-%Y"),
+            }
+            for record in records
+        ]
+        return WorkspaceOperationResult(
+            True, WorkspaceType.MARKET, f"{len(items)} expiries", items,
+        )
 
-        Resolves the nearest weekly expiry and ATM-centered strike window
-        via the Instrument/Expiry Master (never hard-coded), fetches the
-        chain through the existing MarketDataService/broker REST path
-        (which also populates the existing market-data chain cache), and
-        subscribes live CALL+PUT feeds for the displayed window so
-        subsequent ticks flow through the existing live pipeline.
+    def initial_option_chain(
+        self,
+        session_id: str,
+        underlying: str = "NIFTY",
+        *,
+        exchange: str = "NFO",
+        window_radius: int = _STRIKE_WINDOW_RADIUS,
+        expiry_date: str = "",
+    ) -> WorkspaceOperationResult:
+        """Fetch a REST option-chain snapshot for the ATM window at a given expiry.
+
+        Resolves the ATM-centered strike window via the Instrument Master
+        (never hard-coded), fetches the chain through the existing
+        MarketDataService/broker REST path (which also populates the
+        existing market-data chain cache), and subscribes live CALL+PUT
+        feeds for the displayed window so subsequent ticks flow through the
+        existing live pipeline.
+
+        `expiry_date` (DD-Mon-YYYY, e.g. "28-Aug-2026") pins the fetch to a
+        specific expiry -- typically one the user picked from the expiry
+        dropdown (see list_expiries()). Left blank, the nearest weekly
+        expiry from the Expiry Master is resolved automatically, matching
+        prior behavior.
 
         This performs a broker REST call and ~2N subscribe calls; callers
         must invoke it off the Qt UI thread.
@@ -198,14 +238,23 @@ class MarketWorkspaceService(LiveAnalyticsSupport):
 
         instrument_service = self._engines.market_master.instrument_service
         expiry_service = self._engines.market_master.expiry_service
-        expiry_record = expiry_service.nearest_expiry(
-            underlying, ExchangeCode.NSEFO.value, on_date=date.today()
-        )
-        if expiry_record is None:
-            return WorkspaceOperationResult(
-                False, WorkspaceType.MARKET, f"No expiry available for {underlying}"
+        if expiry_date:
+            try:
+                expiry_date_obj = datetime.strptime(expiry_date, "%d-%b-%Y").date()
+            except ValueError:
+                return WorkspaceOperationResult(
+                    False, WorkspaceType.MARKET, f"Invalid expiry date: {expiry_date}"
+                )
+        else:
+            expiry_record = expiry_service.nearest_expiry(
+                underlying, ExchangeCode.NSEFO.value, on_date=date.today()
             )
-        expiry_date = expiry_record.expiry_date.strftime("%d-%b-%Y")
+            if expiry_record is None:
+                return WorkspaceOperationResult(
+                    False, WorkspaceType.MARKET, f"No expiry available for {underlying}"
+                )
+            expiry_date_obj = expiry_record.expiry_date
+            expiry_date = expiry_date_obj.strftime("%d-%b-%Y")
         logger.debug("initial_option_chain: expiry resolved expiry_date={expiry_date}", expiry_date=expiry_date)
 
         future_expiry_record = expiry_service.nearest_expiry(
@@ -241,7 +290,7 @@ class MarketWorkspaceService(LiveAnalyticsSupport):
             if atm is not None and interval > 0:
                 window = [
                     atm + (interval * offset)
-                    for offset in range(-_STRIKE_WINDOW_RADIUS, _STRIKE_WINDOW_RADIUS + 1)
+                    for offset in range(-window_radius, window_radius + 1)
                 ]
         logger.debug("initial_option_chain: ATM strike resolved atm={atm}", atm=atm)
 
@@ -251,7 +300,7 @@ class MarketWorkspaceService(LiveAnalyticsSupport):
             strike.is_atm = atm is not None and strike.strike_price == atm
 
         if spot is not None:
-            self._enrich_greeks(windowed, underlying, exchange, spot, expiry_record.expiry_date)
+            self._enrich_greeks(windowed, underlying, exchange, spot, expiry_date_obj)
 
         if window:
             logger.debug(

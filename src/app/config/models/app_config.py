@@ -14,6 +14,14 @@ class BreezeEnvironment(str, Enum):
     PRODUCTION = "production"
 
 
+class MarketMode(str, Enum):
+    """Live vs. simulator market-data source selection."""
+
+    AUTO = "auto"
+    LIVE = "live"
+    SIMULATOR = "simulator"
+
+
 class ApplicationConfig(BaseModel):
     """Core application settings."""
 
@@ -64,6 +72,7 @@ class BrokerConfig(BaseModel):
 
     schema_version: int = 1
     broker_code: str = "BREEZE"
+    market_mode: MarketMode = MarketMode.AUTO
     account_name: str = "Default"
     user_id: str = ""
     environment: BreezeEnvironment = BreezeEnvironment.PRODUCTION

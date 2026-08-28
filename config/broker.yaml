@@ -1,5 +1,6 @@
 schema_version: 1
 broker_code: BREEZE
+market_mode: auto
 account_name: Default
 user_id: ""
 environment: production

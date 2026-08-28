@@ -45,6 +45,18 @@ class LiveAnalyticsSupport:
             return None
         return self._live_analytics.refresh_and_get_analytics(underlying, exchange, expiry_date)
 
+    def live_analytics_last_error(self) -> str:
+        """Return the real reason the last refresh_live_analytics()/
+        evaluation_context() call returned None, if available -- "" when
+        unknown (no port configured, or the configured port predates this
+        accessor, e.g. a test double). Defensive getattr(): existing
+        LiveAnalyticsPort implementations/test doubles are not required to
+        have this method."""
+        if self._live_analytics is None:
+            return ""
+        accessor = getattr(self._live_analytics, "last_refresh_error", None)
+        return accessor() if callable(accessor) else ""
+
     def evaluation_context(
         self,
         underlying: str,

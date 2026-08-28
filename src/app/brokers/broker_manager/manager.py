@@ -8,6 +8,7 @@ from typing import Any
 from app.brokers.broker_factory.factory import BrokerFactory
 from app.brokers.broker_interface.interface import BrokerInterface
 from app.brokers.broker_manager.state import BrokerConnectionState
+from app.brokers.broker_manager.switchable_broker import SwitchableBroker
 from app.brokers.events import (AuthenticationFailedEvent, BrokerConnectedEvent,
                                 BrokerDisconnectedEvent, SessionExpiredEvent)
 from app.brokers.shared.enums import ConnectionState
@@ -33,13 +34,15 @@ class BrokerManager:
         event_bus: EventBus | None = None,
         *,
         health_callback: Callable[[bool], None] | None = None,
+        initial_code: str | None = None,
     ) -> None:
         """Initialize broker manager."""
         self._factory = factory
         self._config = config
         self._event_bus = event_bus
         self._health_callback = health_callback
-        self._broker: BrokerInterface | None = None
+        self._broker: SwitchableBroker | None = None
+        self._active_code = (initial_code or config.broker_code).upper()
         self._state = BrokerConnectionState()
         self._lock = RLock()
         self._stop_event = Event()
@@ -47,10 +50,32 @@ class BrokerManager:
 
     @property
     def broker(self) -> BrokerInterface:
-        """Return the active broker instance."""
+        """Return the active broker instance (a stable proxy; see SwitchableBroker)."""
         if self._broker is None:
-            self._broker = self._factory.create()
+            self._broker = SwitchableBroker(self._factory.create(self._active_code))
         return self._broker
+
+    def switch_to(self, new_code: str) -> BrokerHealth:
+        """Hot-swap the active broker to `new_code` in place, reconnecting.
+
+        Existing references to `self.broker` (held by the market data
+        engine, subscription/websocket services, etc.) stay valid -- only
+        the proxy's internal delegate changes.
+        """
+        new_code = new_code.upper()
+        with self._lock:
+            if self._broker is not None and self._active_code == new_code:
+                return self.health()
+            if self._broker is not None:
+                self.disconnect()
+            new_delegate = self._factory.create(new_code)
+            if self._broker is None:
+                self._broker = SwitchableBroker(new_delegate)
+            else:
+                self._broker.replace_delegate(new_delegate)
+            self._active_code = new_code
+        self.connect()
+        return self.health()
 
     @property
     def connection_state(self) -> ConnectionState:
@@ -110,7 +135,7 @@ class BrokerManager:
         broker = self._broker
         if broker is None:
             return BrokerHealth(
-                broker_code=self._config.broker_code,
+                broker_code=self._active_code,
                 connection_state=self._state.state,
                 is_session_valid=False,
                 websocket_connected=False,
@@ -138,8 +163,9 @@ class BrokerManager:
 
     @property
     def broker_code(self) -> str:
-        """Return configured broker code."""
-        return self._config.broker_code
+        """Return the currently active broker code (may differ from the
+        configured live-broker identity while running in simulator mode)."""
+        return self._active_code
 
     def _connect_once(self) -> None:
         """Perform a single connect attempt."""

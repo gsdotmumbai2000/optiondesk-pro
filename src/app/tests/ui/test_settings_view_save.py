@@ -31,12 +31,19 @@ class _FakeSettingsViewModel:
         self.apply_theme_command = _FakeCommand()
         self.saved: list[UserPreferences] = []
         self.theme_changed = _FakeSignal()
+        self.market_mode_changed = _FakeSignal()
+        self.market_mode = "auto"
+        self.active_broker = "BREEZE"
+        self.mode_switches: list[str] = []
 
     def get_preferences(self) -> UserPreferences:
         return self._preferences
 
     def save_preferences(self, preferences: UserPreferences) -> None:
         self.saved.append(preferences)
+
+    def set_market_mode(self, mode: str) -> None:
+        self.mode_switches.append(mode)
 
 
 class _FakeSignal:
@@ -79,3 +86,33 @@ class TestSaveBuildsPreferencesFromCurrentFormState:
         view._on_save_clicked()
 
         assert vm.saved[-1].default_exchange == "NSE"
+
+
+class TestMarketModeCombo:
+    """Selecting a market mode applies immediately -- it does not wait for
+    the separate Save Preferences button, unlike exchange/theme/greeks."""
+
+    def test_combo_is_prefilled_from_the_viewmodels_current_mode(self, qapp: QApplication) -> None:
+        vm = _FakeSettingsViewModel(UserPreferences())
+        vm.market_mode = "simulator"
+
+        view = SettingsView(vm)
+
+        assert view._market_mode.currentData() == "simulator"
+
+    def test_selecting_live_calls_set_market_mode_immediately(self, qapp: QApplication) -> None:
+        vm = _FakeSettingsViewModel(UserPreferences())
+        view = SettingsView(vm)
+
+        index = view._market_mode.findData("live")
+        view._market_mode.setCurrentIndex(index)
+
+        assert vm.mode_switches == ["live"]
+
+    def test_constructing_the_view_does_not_itself_trigger_a_switch(self, qapp: QApplication) -> None:
+        vm = _FakeSettingsViewModel(UserPreferences())
+        vm.market_mode = "simulator"
+
+        SettingsView(vm)
+
+        assert vm.mode_switches == []

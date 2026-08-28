@@ -136,3 +136,34 @@ class TestRefreshAndGetAnalyticsFailure:
         result = service.refresh_and_get_analytics("NIFTY", "NFO", "18-Aug-2026")
 
         assert result is None
+
+
+class TestLastRefreshError:
+    """last_refresh_error() lets callers (e.g. TradingWorkspaceService's
+    Evaluate action) surface the real failure reason instead of a generic
+    "unavailable" message."""
+
+    def test_empty_before_any_call(self) -> None:
+        service = _service(_FakePipeline(result=_snapshot()))
+
+        assert service.last_refresh_error() == ""
+
+    def test_records_the_exception_message_on_failure(self) -> None:
+        pipeline = _FakePipeline(error=LiveCalculationException("Spot quote unavailable: NIFTY"))
+        service = _service(pipeline)
+
+        service.refresh_and_get_analytics("NIFTY", "NFO", "18-Aug-2026")
+
+        assert service.last_refresh_error() == "Spot quote unavailable: NIFTY"
+
+    def test_cleared_after_a_subsequent_success(self) -> None:
+        pipeline = _FakePipeline(error=LiveCalculationException("Spot quote unavailable: NIFTY"))
+        service = _service(pipeline)
+        service.refresh_and_get_analytics("NIFTY", "NFO", "18-Aug-2026")
+        assert service.last_refresh_error() != ""
+
+        pipeline._error = None  # noqa: SLF001 -- test control of the fake
+        pipeline._result = _snapshot()  # noqa: SLF001
+        service.refresh_and_get_analytics("NIFTY", "NFO", "18-Aug-2026")
+
+        assert service.last_refresh_error() == ""

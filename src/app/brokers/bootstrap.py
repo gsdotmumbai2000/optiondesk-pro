@@ -25,6 +25,7 @@ class BrokerProvider:
         client_factory: object | None = None,
         session_store: BreezeSessionStore | None = None,
         data_directory: Path | None = None,
+        initial_broker_code: str | None = None,
     ) -> None:
         """Initialize broker provider."""
         callback = health_callback if callable(health_callback) else None
@@ -44,6 +45,7 @@ class BrokerProvider:
             config,
             event_bus,
             health_callback=callback,
+            initial_code=initial_broker_code,
         )
 
     def login_url(self) -> str:

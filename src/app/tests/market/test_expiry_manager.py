@@ -58,3 +58,39 @@ def test_monthly_expiry_last_weekday(market_provider: MarketMasterProvider) -> N
     )
     assert len(records) == 1
     assert records[0].expiry_date.month == 7
+
+
+class TestListUpcomingExpiries:
+    """Powers the Market tab / Add Leg dialog expiry dropdowns."""
+
+    def test_returns_sorted_unique_dates(self, market_provider: MarketMasterProvider) -> None:
+        manager = market_provider.cache.expiry_manager
+        records = manager.list_upcoming_expiries(
+            "NIFTY", "NSEFO", on_date=date(2026, 7, 1), weeks_ahead=6
+        )
+        dates = [item.expiry_date for item in records]
+        assert dates == sorted(dates)
+        assert len(dates) == len(set(dates))
+
+    def test_includes_multiple_weekly_expiries(self, market_provider: MarketMasterProvider) -> None:
+        manager = market_provider.cache.expiry_manager
+        records = manager.list_upcoming_expiries(
+            "NIFTY", "NSEFO", on_date=date(2026, 7, 1), weeks_ahead=6
+        )
+        assert len(records) >= 4
+
+    def test_monthly_coinciding_with_weekly_counted_once(
+        self, market_provider: MarketMasterProvider
+    ) -> None:
+        manager = market_provider.cache.expiry_manager
+        records = manager.list_upcoming_expiries(
+            "NIFTY", "NSEFO", on_date=date(2026, 7, 1), weeks_ahead=4
+        )
+        monthly = manager.generate_expiries(
+            "NIFTY", "NSEFO",
+            from_date=date(2026, 7, 1), to_date=date(2026, 7, 29),
+            expiry_type=ExpiryType.MONTHLY,
+        )
+        monthly_date = monthly[0].expiry_date
+        matches = [item for item in records if item.expiry_date == monthly_date]
+        assert len(matches) == 1

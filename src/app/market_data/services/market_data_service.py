@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from app.brokers.shared.enums import ProductType
 from app.logging.logging_manager import get_logger
 from app.market_data.diagnostics import log_market_data_diagnostic, log_tick_diagnostic
+from app.market_data.models.future import FutureQuote, IndexQuote
 from app.market_data.models.option import OptionChain
 from app.market_data.models.tick import TickSnapshot
 from app.market_data.models.live_status import MarketStatusSnapshot
@@ -141,6 +142,14 @@ class MarketDataService:
         )
         logger.debug("MarketDataService.get_option_chain: engine.query.get_option_chain returned")
         return chain
+
+    def get_spot(self, symbol: str, exchange: str) -> IndexQuote:
+        """Return spot/index quote from cache, falling back to a broker REST fetch."""
+        return self._provider.engine.query.get_spot(symbol, exchange)
+
+    def get_future(self, symbol: str, exchange: str, expiry_date: str) -> FutureQuote:
+        """Return future quote from cache, falling back to a broker REST fetch."""
+        return self._provider.engine.query.get_future(symbol, exchange, expiry_date)
 
     def market_status(self) -> MarketStatusSnapshot:
         """Return current market status."""

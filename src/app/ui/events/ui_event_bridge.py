@@ -16,8 +16,11 @@ from app.events.event_bus import EventBus
 from app.live.events import LiveOptionChainUpdatedEvent
 from app.logging.logging_manager import get_logger
 from app.market_data.diagnostics import log_tick_diagnostic
-from app.market_data.events import (MarketClosedEvent, MarketOpenedEvent,
-                                    QuoteUpdatedEvent, TickReceivedEvent)
+from app.market_data.events import (ConnectionEstablishedEvent,
+                                    ConnectionLostEvent, MarketClosedEvent,
+                                    MarketOpenedEvent, QuoteUpdatedEvent,
+                                    ReconnectCompletedEvent,
+                                    ReconnectStartedEvent, TickReceivedEvent)
 from app.monitor.events import AlertRaisedEvent
 from app.simulator.events import RecordingTickCapturedEvent
 
@@ -70,6 +73,10 @@ class UIEventBridge(QObject):
         self._bus.subscribe(QuoteUpdatedEvent, self._on_quote_updated)
         self._bus.subscribe(LiveOptionChainUpdatedEvent, self._on_option_chain_updated)
         self._bus.subscribe(RecordingTickCapturedEvent, self._on_recording_tick_captured)
+        self._bus.subscribe(ConnectionLostEvent, self._on_connection_state_changed)
+        self._bus.subscribe(ConnectionEstablishedEvent, self._on_connection_state_changed)
+        self._bus.subscribe(ReconnectStartedEvent, self._on_connection_state_changed)
+        self._bus.subscribe(ReconnectCompletedEvent, self._on_connection_state_changed)
 
     def _on_portfolio(self, event: PortfolioLoadedEvent) -> None:
         self.portfolio_updated.emit(event.payload)
@@ -123,6 +130,19 @@ class UIEventBridge(QObject):
 
     def _on_recording_tick_captured(self, event: RecordingTickCapturedEvent) -> None:
         self.recording_tick_captured.emit(event.payload)
+
+    def _on_connection_state_changed(self, event: object) -> None:
+        """Force an immediate status refresh on connection state transitions.
+
+        MarketViewModel._load_status() is otherwise only triggered as a side
+        effect of a tick arriving (see _on_market_updated below). During a
+        broker disconnect/relogin/resubscribe sequence no ticks flow at all,
+        so without this the status bar sits stale with no indication a
+        reconnect is in progress -- confirmed by production log analysis to
+        last up to ~95s during a broker switch (see ConnectionStateMachine /
+        ReconnectService, which already publish these events but previously
+        had no UI listener)."""
+        self.market_updated.emit({})
 
     def emit_market_update(self, payload: dict) -> None:
         """Emit market update for UI refresh."""

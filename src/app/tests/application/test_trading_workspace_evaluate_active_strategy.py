@@ -22,9 +22,10 @@ class _FakeLiveAnalyticsPort:
     """Test double for LiveAnalyticsPort: only refresh_and_get_analytics()
     is exercised by evaluate_active_strategy()."""
 
-    def __init__(self, snapshot: LiveAnalyticsSnapshot | None) -> None:
+    def __init__(self, snapshot: LiveAnalyticsSnapshot | None, error_reason: str = "") -> None:
         self.snapshot = snapshot
         self.received: tuple[str, str, str] | None = None
+        self.error_reason = error_reason
 
     def get_chain(self, underlying, exchange, expiry_date):
         raise AssertionError("not exercised by evaluate_active_strategy()")
@@ -41,6 +42,9 @@ class _FakeLiveAnalyticsPort:
     def refresh_and_get_analytics(self, underlying: str, exchange: str, expiry_date: str):
         self.received = (underlying, exchange, expiry_date)
         return self.snapshot
+
+    def last_refresh_error(self) -> str:
+        return self.error_reason
 
 
 def _leg(**overrides) -> StrategyLeg:
@@ -141,6 +145,20 @@ class TestEvaluateActiveStrategyUnavailableFallsBackGracefully:
 
         assert result.success is False
         assert "Live chain unavailable" in result.message
+
+    def test_failure_message_includes_the_real_underlying_reason(self) -> None:
+        """The generic "Live chain unavailable" text alone hides what
+        actually failed deep in the calculation pipeline (e.g. no spot
+        quote yet) -- when the port can report why, that reason must reach
+        the user, not just the generic fallback text."""
+        port = _FakeLiveAnalyticsPort(None, error_reason="Spot quote unavailable: NIFTY")
+        strategy = _strategy((_leg(),))
+        service, session_id = _service_with_active_strategy(port, strategy)
+
+        result = service.evaluate_active_strategy(session_id)
+
+        assert result.success is False
+        assert "Spot quote unavailable: NIFTY" in result.message
 
     def test_no_live_analytics_port_configured_returns_failure(self) -> None:
         strategy = _strategy((_leg(),))

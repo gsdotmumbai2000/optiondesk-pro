@@ -191,15 +191,28 @@ class TestBoundary3bMarketDataEngineCacheNoOp:
 class _FakeMarketDataService:
     """Minimal MarketDataService double for LiveMarketQueryAdapter tests."""
 
-    def __init__(self, tick: TickSnapshot | None, snapshot: dict | None = None) -> None:
+    def __init__(
+        self,
+        tick: TickSnapshot | None,
+        snapshot: dict | None = None,
+        *,
+        rest_spot_ltp: Decimal | None = None,
+    ) -> None:
         self._tick = tick
         self._snapshot = snapshot if snapshot is not None else {}
+        self._rest_spot_ltp = rest_spot_ltp
 
     def latest_tick(self, symbol: str, exchange: str, **parts: str) -> TickSnapshot | None:
         return self._tick
 
     def cache_snapshot(self) -> dict:
         return self._snapshot
+
+    def get_spot(self, symbol: str, exchange: str):
+        """Stands in for MarketDataService's broker-REST spot fallback --
+        "no data available anywhere" (ltp=None) unless the test configures
+        rest_spot_ltp."""
+        return SimpleNamespace(ltp=self._rest_spot_ltp, timestamp=None)
 
 
 class TestBoundary4SpotLookupFailureNoOp:
@@ -236,6 +249,18 @@ class TestBoundary4SpotLookupFailureNoOp:
         result = adapter.get_spot("NIFTY", "NSE")
 
         assert result.ltp is None
+
+    def test_cache_miss_falls_back_to_broker_rest_quote(self) -> None:
+        """No tick has streamed in yet, but the broker REST fetch has a
+        real quote -- Evaluate/Optimize must use it rather than reporting
+        unavailable, matching MarketDataService.get_option_chain()'s
+        existing REST fallback behavior."""
+        market_data = _FakeMarketDataService(None, rest_spot_ltp=Decimal("24510.5"))
+        adapter = LiveMarketQueryAdapter(market_data, MagicMock())
+
+        result = adapter.get_spot("NIFTY", "NSE")
+
+        assert result.ltp == Decimal("24510.5")
 
     def test_name_with_space_does_not_raise(self) -> None:
         """Requested symbol "NIFTY 50" (the observed mismatch variant) must not crash lookup."""

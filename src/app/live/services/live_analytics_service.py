@@ -68,6 +68,7 @@ class LiveAnalyticsService:
         self._portfolio_cache = portfolio_cache
         self._freshness = freshness or FreshnessValidator()
         self._chain_published_at: dict[str, float] = {}
+        self._last_error = ""
 
     def set_refresh_mode(self, mode: RefreshMode) -> None:
         self._refresh.set_mode(mode)
@@ -91,6 +92,13 @@ class LiveAnalyticsService:
         self._refresh.request_manual_refresh(key)
         self._schedule(key)
 
+    def last_refresh_error(self) -> str:
+        """Return the message of the most recent refresh_and_get_analytics()/
+        build_evaluation_context() failure, or "" if the last call (or no
+        call yet) succeeded. Lets callers surface the real cause (e.g.
+        "Spot quote unavailable: NIFTY") instead of a generic message."""
+        return self._last_error
+
     def refresh_and_get_analytics(
         self,
         underlying: str,
@@ -109,12 +117,14 @@ class LiveAnalyticsService:
             snapshot = self._pipeline.run(key)
             self._finalize(key, snapshot)
         except LiveAnalyticsException as error:
+            self._last_error = str(error)
             logger.warning(
                 "On-demand analytics refresh failed for {key}: {error}",
                 key=key.cache_key(),
                 error=error,
             )
             return None
+        self._last_error = ""
         self._publisher.publish_snapshot(key, snapshot)
         self._sync.notify(key)
         return snapshot
@@ -145,12 +155,14 @@ class LiveAnalyticsService:
             volatility_market_snapshot = self._context_builder.build_volatility_snapshot(key, ctx)
             historical_data = self._context_builder.build_historical_snapshot(key)
         except ValueError as error:
+            self._last_error = str(error)
             logger.warning(
                 "Evaluation context unavailable for {key}: {error}",
                 key=key.cache_key(),
                 error=error,
             )
             return None
+        self._last_error = ""
         return EvaluationContext(
             calculation_context=ctx,
             option_contract=contract,

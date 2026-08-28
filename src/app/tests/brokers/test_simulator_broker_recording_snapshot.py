@@ -84,6 +84,29 @@ def test_get_quotes_seeds_from_recording(tmp_path: Path) -> None:
     assert quote.ltp == Decimal("24200")
 
 
+def test_get_option_chain_falls_back_to_recorded_expiry_when_requested_one_is_absent(
+    tmp_path: Path,
+) -> None:
+    """A user picking a different expiry from the dropdown than whatever
+    was live when this recording was made must still get a usable
+    (approximate) chain, not an empty one -- simulator mode has only ever
+    recorded strikes for the one expiry that was live at record time."""
+    recordings_dir = tmp_path / "simulator" / "recordings"
+    recordings_dir.mkdir(parents=True)
+    _write_recording(recordings_dir / "nifty_20260821.jsonl")
+
+    broker = SimulatorBroker(BrokerConfig(broker_code="SIMULATOR"), data_directory=tmp_path)
+    chain = broker.get_option_chain(
+        OptionChainRequest(underlying="NIFTY", exchange="NFO", expiry_date="01-Sep-2026")
+    )
+
+    assert len(chain.rows) == 1
+    leg = chain.rows[0]
+    assert leg.strike_price == Decimal("24200")
+    assert leg.call_ltp == Decimal("120.5")
+    assert leg.put_ltp == Decimal("95.25")
+
+
 def test_no_recording_returns_empty_but_valid(tmp_path: Path) -> None:
     """With no recording present, should degrade to empty results rather than raise."""
     broker = SimulatorBroker(BrokerConfig(broker_code="SIMULATOR"), data_directory=tmp_path)

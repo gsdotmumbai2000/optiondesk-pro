@@ -202,11 +202,33 @@ class AddLegDialog(QDialog):
         if not underlying or expiry is None:
             return
         self._chain_rows = list(self._vm.leg_chain_strikes(underlying, expiry))
+        if self._chain_rows:
+            self._error.setVisible(False)
+            self._populate_chain_rows()
+            return
+        # Nothing cached for this expiry yet (the user picked one Market
+        # workspace hasn't loaded) -- fetch it fresh via the same broker
+        # REST path the Market tab uses, then refresh once it lands.
+        self._show_error(f"Loading {expiry.strftime('%d-%b-%Y')} chain from broker...")
+        self._vm.load_expiry_chain(
+            underlying, expiry, on_done=partial(self._on_chain_fetch_done, underlying, expiry)
+        )
+
+    def _on_chain_fetch_done(self, underlying: str, expiry: date) -> None:
+        """load_expiry_chain() callback: re-read the (now hopefully
+        populated) cache and refresh the table. Guarded against a stale
+        response landing after the user already changed underlying/expiry
+        in the dialog."""
+        if self._underlying.currentText() != underlying or self._expiry.currentData() != expiry:
+            return
+        self._chain_rows = list(self._vm.leg_chain_strikes(underlying, expiry))
         if not self._chain_rows:
             self._show_error(self._vm.status_message or "No live strikes available")
             return
         self._error.setVisible(False)
+        self._populate_chain_rows()
 
+    def _populate_chain_rows(self) -> None:
         strike_col = self._strike_column()
         call_bs_col = self._call_bs_column()
         put_bs_col = self._put_bs_column()

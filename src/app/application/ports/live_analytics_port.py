@@ -54,3 +54,7 @@ class LiveAnalyticsPort(Protocol):
     ) -> EvaluationContext | None:
         """Build the raw context bundle other callers need to construct
         their own evaluation requests."""
+
+    def last_refresh_error(self) -> str:
+        """Return the message of the most recent refresh/build failure, or
+        "" if the last call succeeded."""

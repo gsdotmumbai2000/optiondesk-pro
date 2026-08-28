@@ -66,6 +66,29 @@ class ExpiryManager:
             return None
         return min(expiries, key=lambda item: item.expiry_date)
 
+    def list_upcoming_expiries(
+        self,
+        underlying: str,
+        exchange: str,
+        *,
+        on_date: date,
+        weeks_ahead: int = 8,
+    ) -> list[ExpiryRecord]:
+        """Return sorted, deduplicated weekly+monthly expiries between
+        on_date and on_date + weeks_ahead weeks (a monthly expiry that
+        coincides with a weekly one is kept once, as WEEKLY)."""
+        to_date = on_date + timedelta(weeks=weeks_ahead)
+        weekly = self.generate_expiries(
+            underlying, exchange, from_date=on_date, to_date=to_date, expiry_type=ExpiryType.WEEKLY
+        )
+        monthly = self.generate_expiries(
+            underlying, exchange, from_date=on_date, to_date=to_date, expiry_type=ExpiryType.MONTHLY
+        )
+        merged: dict[date, ExpiryRecord] = {}
+        for record in (*monthly, *weekly):
+            merged[record.expiry_date] = record
+        return sorted(merged.values(), key=lambda item: item.expiry_date)
+
     def generate_expiries(
         self,
         underlying: str,

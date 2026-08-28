@@ -91,8 +91,22 @@ class _FakeMarketService:
     def latest_quote(self, session_id: str, symbol: str, exchange: str) -> WorkspaceOperationResult:
         return WorkspaceOperationResult(False, WorkspaceType.MARKET, "no tick", {})
 
-    def initial_option_chain(
+    def list_expiries(
         self, session_id: str, underlying: str = "NIFTY", *, exchange: str = "NFO"
+    ) -> WorkspaceOperationResult:
+        return WorkspaceOperationResult(
+            True, WorkspaceType.MARKET, "1 expiry",
+            [{"label": "18-Aug-2026 (Weekly)", "expiry_date": "18-Aug-2026"}],
+        )
+
+    def initial_option_chain(
+        self,
+        session_id: str,
+        underlying: str = "NIFTY",
+        *,
+        exchange: str = "NFO",
+        window_radius: int = 10,
+        expiry_date: str = "",
     ) -> WorkspaceOperationResult:
         self.initial_option_chain_calls.append((session_id, underlying, exchange))
         return WorkspaceOperationResult(

@@ -6,6 +6,7 @@ from app.live.calculations.context_builder import LiveContextBuilder
 from app.live.exceptions import LiveCalculationException
 from app.live.models.analytics import LiveAnalyticsSnapshot
 from app.live.models.chain_key import ChainKey
+from app.logging.logging_manager import get_logger
 from app.margin.models.request import MarginAnalysisRequest
 from app.option_chain.models.request import OptionChainAnalysisRequest
 from app.payoff.models.request import PayoffAnalysisRequest
@@ -13,6 +14,8 @@ from app.probability.models.request import ProbabilityAnalysisRequest
 from app.risk.models.request import RiskAnalysisRequest
 from app.strategy.engine.bundle import EngineBundle
 from app.volatility.models.request import VolatilityAnalysisRequest
+
+logger = get_logger(__name__)
 
 
 class LiveCalculationPipeline:
@@ -71,6 +74,20 @@ class LiveCalculationPipeline:
         )
         payoff = risk = margin = None
         if resolved_legs:
+            # Temporary diagnostic: pin down a reported payoff max-profit
+            # inflation (~2x expected) against a same-strike short straddle
+            # -- logs exactly what quantity/multiplier reach the payoff
+            # engine per leg, since the leg table in the UI only reflects
+            # StrategyBuilder's in-progress legs, not necessarily whatever
+            # ActiveStrategyAdapter resolves here.
+            logger.debug(
+                "Payoff legs resolved for {key}: {legs}",
+                key=key.cache_key(),
+                legs=[
+                    (leg.option_type.value, leg.quantity, leg.multiplier, str(leg.strike), str(leg.premium))
+                    for leg in resolved_legs
+                ],
+            )
             payoff = self._engines.payoff.calculate(
                 PayoffAnalysisRequest(
                     context=ctx,

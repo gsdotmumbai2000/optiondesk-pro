@@ -14,6 +14,7 @@ class LiveMarketStatus(str, Enum):
     CLOSED = "Closed"
     HOLIDAY = "Holiday"
     CONNECTION_LOST = "Connection Lost"
+    SIMULATED = "Simulated"
 
 
 @dataclass(frozen=True, slots=True)

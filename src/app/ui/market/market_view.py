@@ -49,7 +49,13 @@ class MarketView(QWidget):
         viewmodel.market_status_changed.connect(self._on_market_status)
         viewmodel.option_chain_changed.connect(self._chain.load_rows)
         viewmodel.option_chain_snapshot_changed.connect(self._volatility_chart.set_chain)
+        viewmodel.expiries_changed.connect(self._chain.set_expiries)
+        viewmodel.expiry_selected.connect(self._chain.set_selected_expiry)
+        self._chain.chain_width_changed.connect(viewmodel.set_chain_width)
+        self._chain.expiry_changed.connect(viewmodel.set_expiry)
         self._on_watchlist(viewmodel.watchlist)
+        if viewmodel.available_expiries:
+            self._chain.set_expiries(viewmodel.available_expiries)
 
     def _wrap(self, title: str, widget: QWidget) -> QWidget:
         box = QWidget()
@@ -75,7 +81,15 @@ class MarketView(QWidget):
     def _on_tick(self, payload: dict) -> None:
         tick = payload.get("tick", payload)
         symbol = str(tick.get("symbol", ""))
-        if symbol == "NIFTY":
+        exchange = str(tick.get("exchange", ""))
+        # Futures ticks (exchange "NFO") are canonicalized to the same bare
+        # underlying symbol as the cash-index spot/watchlist tick (exchange
+        # "NSE") -- see websocket_service._canonicalize_future_tick. Without
+        # the exchange check, a futures LTP would flow into the spot widget
+        # and watchlist rows, making the displayed price flicker/spike
+        # against the futures premium/discount.
+        is_index_tick = exchange == "NSE"
+        if symbol == "NIFTY" and is_index_tick:
             self._spot.update_tick(tick)
             if self._price_candles.add_tick_payload(tick):
                 self._price_chart.set_candles(self._price_candles.candles)
@@ -86,6 +100,8 @@ class MarketView(QWidget):
             available_keys=list(self._symbol_rows),
             lookup_result=self._symbol_rows.get(symbol),
         )
+        if not is_index_tick:
+            return
         row = self._symbol_rows.get(symbol)
         if row is None:
             return

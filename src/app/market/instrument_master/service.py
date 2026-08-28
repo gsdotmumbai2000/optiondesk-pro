@@ -127,6 +127,19 @@ class InstrumentService:
             expiry_type=ExpiryType.MONTHLY,
         )
 
+    def list_upcoming_expiries(
+        self,
+        underlying: str,
+        exchange: str,
+        *,
+        on_date: date,
+        weeks_ahead: int = 8,
+    ) -> list[ExpiryRecord]:
+        """Return sorted, deduplicated weekly+monthly expiries ahead of on_date."""
+        return self._cache.expiry_manager.list_upcoming_expiries(
+            underlying, exchange, on_date=on_date, weeks_ahead=weeks_ahead
+        )
+
     def atm_strike(self, underlying: str, spot: Decimal) -> Decimal:
         """Return ATM strike for an underlying."""
         return atm_strike(spot, self.get_strike_interval(underlying))

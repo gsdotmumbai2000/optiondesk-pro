@@ -4,6 +4,7 @@ from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from app.brokers.broker_interface.interface import BrokerInterface
+from app.brokers.shared.enums import BrokerCode
 from app.market_data.models.live_status import LiveMarketStatus, MarketStatusSnapshot
 from app.market_data.websocket.enums import LiveConnectionStatus
 from app.market_data.websocket.websocket_service import WebSocketService
@@ -28,10 +29,15 @@ class MarketStatusDetector:
     ) -> None:
         """Initialize detector.
 
-        ``always_open`` bypasses the real IST wall-clock/weekday/holiday
-        check for the simulator broker, which replays ticks after hours and
-        would otherwise always be reported CLOSED regardless of whether it
-        is actively streaming.
+        ``always_open`` is a generic real-hours bypass for callers that
+        explicitly opt into it; it always reports OPEN. The simulator broker
+        is detected separately and dynamically from ``broker.broker_code``
+        on every call (rather than a frozen constructor flag, since a
+        runtime Live/Simulator mode switch changes which broker is active
+        without rebuilding this detector) and reports the distinct
+        SIMULATED status instead of OPEN -- replayed ticks flow regardless
+        of the real wall clock, and claiming the real market is "Open" while
+        it's actually closed would mislead anyone reading the status bar.
         """
         self._broker = broker
         self._websocket = websocket
@@ -51,6 +57,8 @@ class MarketStatusDetector:
             return MarketStatusSnapshot(
                 LiveMarketStatus.CONNECTION_LOST, self._exchange, trade_date
             )
+        if self._broker.broker_code == BrokerCode.SIMULATOR:
+            return MarketStatusSnapshot(LiveMarketStatus.SIMULATED, self._exchange, trade_date)
         if self._always_open:
             return MarketStatusSnapshot(LiveMarketStatus.OPEN, self._exchange, trade_date)
         if trade_date in self._holidays or now.weekday() >= 5:

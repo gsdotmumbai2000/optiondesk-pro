@@ -1,39 +1,39 @@
 schema_version: 1
 console:
-  enabled: true
+  enabled: false
   level: INFO
   colorize: true
 file:
-  enabled: true
+  enabled: false
   level: DEBUG
   path: application.log
   rotation: 10 MB
   retention: 30 days
   compression: zip
 daily:
-  enabled: true
+  enabled: false
   level: INFO
   path: daily/{time:YYYY-MM-DD}.log
   retention: 180 days
 error:
-  enabled: true
+  enabled: false
   level: ERROR
   path: error.log
   rotation: 5 MB
   retention: 365 days
 performance:
-  enabled: true
+  enabled: false
   level: INFO
   path: performance.log
   rotation: 10 MB
 audit:
-  enabled: true
+  enabled: false
   level: INFO
   path: audit.log
   rotation: 10 MB
   retention: 2555 days
 api:
-  enabled: true
+  enabled: false
   level: DEBUG
   path: api.log
   rotation: 10 MB

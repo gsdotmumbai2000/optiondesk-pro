@@ -11,7 +11,16 @@ from app.market_data.services.market_data_service import MarketDataService
 
 
 class LiveMarketQueryAdapter:
-    """Read-only market query backed by live caches only."""
+    """Read live market data, preferring the tick-driven cache (freshest)
+    and falling back to a broker REST fetch when no tick has streamed in
+    yet for this key -- e.g. right after subscribing, or whenever the
+    websocket simply has nothing new to deliver (market closed, thin
+    liquidity, or a connected-but-quiet session). Without this fallback,
+    Evaluate/Optimize/AI recommendations were permanently unusable in
+    exactly that situation even though the Market tab's REST-backed
+    option chain already shows real data for the same underlying/expiry
+    -- MarketDataService.get_option_chain() already has this fallback;
+    get_spot()/get_future() previously did not."""
 
     def __init__(
         self,
@@ -23,34 +32,35 @@ class LiveMarketQueryAdapter:
 
     def get_spot(self, symbol: str, exchange: str) -> object:
         tick = self._market_data.latest_tick(symbol, exchange)
-        if tick is None or tick.ltp is None:
-            return SimpleNamespace(ltp=None, timestamp=None)
-        return SimpleNamespace(ltp=tick.ltp, timestamp=tick.timestamp)
+        if tick is not None and tick.ltp is not None:
+            return SimpleNamespace(ltp=tick.ltp, timestamp=tick.timestamp)
+        quote = self._market_data.get_spot(symbol, exchange)
+        return SimpleNamespace(ltp=quote.ltp, timestamp=quote.timestamp)
 
     def get_future(self, symbol: str, exchange: str, expiry_date: str) -> object:
         tick = self._market_data.latest_tick(symbol, exchange, expiry_date=expiry_date)
-        if tick is None:
-            return SimpleNamespace(ltp=None, underlying=symbol, timestamp=None)
+        if tick is not None and tick.ltp is not None:
+            return SimpleNamespace(
+                ltp=tick.ltp,
+                underlying=symbol,
+                open_interest=tick.open_interest,
+                volume=tick.volume,
+                timestamp=tick.timestamp,
+            )
+        quote = self._market_data.get_future(symbol, exchange, expiry_date)
         return SimpleNamespace(
-            ltp=tick.ltp,
-            underlying=symbol,
-            open_interest=tick.open_interest,
-            volume=tick.volume,
-            timestamp=tick.timestamp,
+            ltp=quote.ltp,
+            underlying=quote.underlying,
+            open_interest=quote.open_interest,
+            volume=quote.volume,
+            timestamp=quote.timestamp,
         )
 
     def get_option_chain(self, underlying: str, exchange: str, expiry_date: str) -> object:
         chain = self._option_cache.get(ChainKey(underlying, exchange, expiry_date))
-        if chain is None:
-            return SimpleNamespace(
-                underlying=underlying,
-                exchange=exchange,
-                expiry_date=expiry_date,
-                spot_price=None,
-                atm_strike=None,
-                strikes=[],
-            )
-        return ChainBuilder.to_market_chain(chain)
+        if chain is not None:
+            return ChainBuilder.to_market_chain(chain)
+        return self._market_data.get_option_chain(underlying, exchange, expiry_date)
 
     def get_atm_strike(self, underlying: str, exchange: str, expiry_date: str) -> Decimal | None:
         chain = self._option_cache.get(ChainKey(underlying, exchange, expiry_date))

@@ -1,5 +1,6 @@
 """Broker connection status service."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from threading import RLock
 
@@ -32,10 +33,19 @@ class ConnectionStatusService:
         self,
         config: BrokerConfig,
         event_bus: EventBus | None = None,
+        *,
+        active_broker_code: Callable[[], str] | None = None,
     ) -> None:
-        """Initialize status service."""
+        """Initialize status service.
+
+        ``active_broker_code`` reports which broker is actually connected
+        right now; without it, the display falls back to the configured
+        live-broker identity, which goes stale once Live/Simulator mode
+        switching lets the active broker differ from that config value.
+        """
         self._config = config
         self._event_bus = event_bus
+        self._active_broker_code = active_broker_code
         self._lock = RLock()
         self._connection_state = ConnectionState.DISCONNECTED
         self._session_valid = False
@@ -77,7 +87,9 @@ class ConnectionStatusService:
         )
 
     def _broker_display_name(self) -> str:
-        code = self._config.broker_code.upper()
+        code = (
+            self._active_broker_code() if self._active_broker_code else self._config.broker_code
+        ).upper()
         if code == BrokerCode.BREEZE.value:
             return "ICICI Breeze"
         return code.title()

@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from app.brokers.broker_interface.interface import BrokerInterface
-from app.brokers.shared.enums import BrokerCode
 from app.brokers.shared.models import Quote as BrokerQuote
 from app.events.event_bus import EventBus
 from app.logging.logging_manager import get_logger
@@ -66,9 +65,7 @@ class LiveMarketDataProvider:
             self.heartbeat,
             event_bus,
         )
-        self.market_status = MarketStatusDetector(
-            broker, self.websocket, always_open=broker.broker_code == BrokerCode.SIMULATOR
-        )
+        self.market_status = MarketStatusDetector(broker, self.websocket)
         self._publisher = MarketPublisher(event_bus)
         self._event_bus = event_bus
         self._broker = broker
@@ -149,7 +146,7 @@ class LiveMarketDataProvider:
         if self._last_market_status == snapshot.status:
             return
         self._last_market_status = snapshot.status
-        if snapshot.status.value == "Open":
+        if snapshot.status.value in {"Open", "Simulated"}:
             self._publisher.publish_market_opened(snapshot.exchange)
         elif snapshot.status.value in {"Closed", "Holiday"}:
             self._publisher.publish_market_closed(snapshot.exchange)

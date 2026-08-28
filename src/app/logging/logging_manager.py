@@ -95,7 +95,18 @@ class LoggingManager:
         )
 
     def _configure_file_sinks(self) -> None:
-        """Configure file-based logging sinks."""
+        """Configure file-based logging sinks.
+
+        ``enqueue=True`` on every file sink: this app logs from many
+        concurrent threads (event bus, scheduler, heartbeat monitor,
+        background workers), and loguru's rotation does a plain
+        os.rename() under the hood -- without enqueue, two threads racing
+        a write against a rotation-triggering write can leave the rename
+        target briefly open on Windows, so the rename fails with
+        WinError 32 and gets retried on every subsequent log call for the
+        rest of the process's life. enqueue funnels every write through
+        one dedicated writer thread, which removes the race.
+        """
         file_cfg = self._config.file
         if file_cfg.enabled:
             logger.add(
@@ -105,6 +116,7 @@ class LoggingManager:
                 retention=file_cfg.retention,
                 compression=file_cfg.compression,
                 encoding="utf-8",
+                enqueue=True,
             )
 
         self._add_sink(self._config.daily, "daily", include_filter=False)
@@ -131,6 +143,7 @@ class LoggingManager:
         kwargs: dict[str, Any] = {
             "level": sink_config.level,
             "encoding": "utf-8",
+            "enqueue": True,
         }
         rotation = getattr(sink_config, "rotation", None)
         retention = getattr(sink_config, "retention", None)
