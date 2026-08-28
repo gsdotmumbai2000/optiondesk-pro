@@ -15,6 +15,7 @@ from app.ui.main_window.ribbon_bar import build_ribbon
 from app.ui.models.ui_enums import UIWorkspaceId
 from app.ui.navigation.navigation_pane import NavigationPane
 from app.ui.themes.theme_manager import ThemeManager
+from app.utils.datetime_helper import DateTimeHelper
 from app.ui.viewmodels import (
     AIViewModel,
     BacktestingViewModel,
@@ -190,7 +191,9 @@ class MainWindow(QMainWindow):
 
     def _on_tick_status_bar(self, payload: dict) -> None:
         tick = payload.get("tick", payload)
-        self._last_tick_time = str(tick.get("timestamp", "—"))
+        # Store the raw timestamp; it is converted to IST for display in
+        # _update_market_status_bar so every code path is formatted the same way.
+        self._last_tick_time = tick.get("timestamp", "—")
         self._update_market_status_bar()
 
     def _update_market_status_bar(self, payload: dict | None = None) -> None:
@@ -205,7 +208,9 @@ class MainWindow(QMainWindow):
             market = self._market_vm.market_status
             connected = self._market_vm.connection_status
             last_tick = self._market_vm.last_update
-        self._market_status_indicator.update_status(market, last_tick, connected)
+        self._market_status_indicator.update_status(
+            market, DateTimeHelper.format_ist(last_tick), connected
+        )
 
     def _init_recording_indicator(self) -> None:
         """Show the badge immediately if recording started before the UI existed.

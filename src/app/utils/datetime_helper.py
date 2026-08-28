@@ -6,6 +6,11 @@ from zoneinfo import ZoneInfo
 from app.utils.constants import DEFAULT_TIMEZONE
 
 
+IST_DISPLAY_FORMAT = "%d-%m-%Y %I:%M:%S %p"
+
+_EMPTY_MARKERS = {"", "—", "None"}
+
+
 class DateTimeHelper:
     """Helper for consistent UTC and IST datetime handling."""
 
@@ -36,3 +41,20 @@ class DateTimeHelper:
     def parse_iso(value: str) -> datetime:
         """Parse an ISO-8601 datetime string."""
         return datetime.fromisoformat(value)
+
+    @staticmethod
+    def format_ist(value: str | datetime | None, fmt: str = IST_DISPLAY_FORMAT) -> str:
+        """Format a UTC timestamp (ISO string or datetime) as IST for display.
+
+        Returns an em dash for missing/unparseable values, and is safe to call
+        with a value that is already an em dash placeholder.
+        """
+        if value is None:
+            return "—"
+        if isinstance(value, str) and value.strip() in _EMPTY_MARKERS:
+            return "—"
+        try:
+            dt = value if isinstance(value, datetime) else DateTimeHelper.parse_iso(value)
+        except (TypeError, ValueError):
+            return "—"
+        return DateTimeHelper.to_local(dt).strftime(fmt)

@@ -95,14 +95,7 @@ class MarketView(QWidget):
 
     @staticmethod
     def _format_ist_time(timestamp: str | None) -> str:
-        if not timestamp:
-            return "—"
-        try:
-            utc_dt = DateTimeHelper.parse_iso(timestamp)
-            ist_dt = DateTimeHelper.to_local(utc_dt)
-            return ist_dt.strftime("%d-%m-%Y %H:%M:%S")
-        except ValueError:
-            return "—"
+        return DateTimeHelper.format_ist(timestamp)
 
     def _on_market_status(self, payload: dict) -> None:
         status = str(payload.get("status", "—"))
